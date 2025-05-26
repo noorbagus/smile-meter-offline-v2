@@ -642,7 +642,7 @@ return (
           />
           <div className="text-white text-center">
             <img 
-              src="src/images/attribution.png" 
+              src="images/attribution.png" 
               alt="Attribution" 
               className="h-4 mx-auto"
             />
