@@ -195,12 +195,6 @@ const formatTime = (seconds: number): string => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-const filters = [
-  { id: 'none', name: 'Original', icon: Camera },
-  { id: 'beauty', name: 'Beauty', icon: Sparkles },
-  { id: 'vintage', name: 'Vintage', icon: Stars },
-  { id: 'neon', name: 'Neon', icon: Zap }
-];
 
 const startRecording = () => {
   if (!outputCanvasRef.current || cameraState !== 'ready') {
@@ -320,85 +314,42 @@ const downloadVideo = () => {
 };
 
 const closePreview = () => {
-  console.log('🔄 CLOSE PREVIEW START');
-  console.log('Current state:', { 
-    sessionRef: !!sessionRef.current, 
-    outputCanvasRef: !!outputCanvasRef.current, 
-    cameraFeedRef: !!cameraFeedRef.current 
-  });
-  
   setShowPreview(false);
   setRecordedVideo(null);
   
-  // Debug camera session restart
+  // Restart camera session
   if (sessionRef.current) {
-    console.log('📹 Restarting camera session...');
-    console.log('Session methods:', Object.getOwnPropertyNames(sessionRef.current));
-    
+    addLog('Restarting camera session');
     try {
       sessionRef.current.play('live');
-      console.log('✅ Camera session.play() called');
     } catch (error) {
-      console.log('❌ Error calling play():', error);
-      // Try alternative method
-      try {
-        sessionRef.current.resume();
-        console.log('✅ Used resume() instead');
-      } catch (e) {
-        console.log('❌ Resume also failed:', e);
-      }
+      addLog(`Session restart error: ${error}`);
     }
-    
-    // Check if session is actually playing
-    setTimeout(() => {
-      console.log('Session state:', {
-        isPlaying: sessionRef.current?.isPlaying,
-        state: sessionRef.current?.state,
-        output: !!sessionRef.current?.output?.live
-      });
-    }, 100);
-  } else {
-    console.log('❌ No camera session to restart');
   }
   
-  // Debug DOM reattachment
-  if (outputCanvasRef.current && cameraFeedRef.current) {
-    console.log('🔗 Checking DOM attachment...');
-    console.log('Canvas parent before:', outputCanvasRef.current.parentNode);
-    console.log('Feed container children:', cameraFeedRef.current.children.length);
-    
-    const isAlreadyAttached = cameraFeedRef.current.contains(outputCanvasRef.current);
-    console.log('Already attached?', isAlreadyAttached);
-    
-    if (!isAlreadyAttached) {
-      console.log('🔧 Reattaching canvas to DOM...');
-      cameraFeedRef.current.innerHTML = '';
-      outputCanvasRef.current.style.width = '100%';
-      outputCanvasRef.current.style.height = '100%';
-      outputCanvasRef.current.style.objectFit = 'cover';
-      outputCanvasRef.current.className = 'absolute inset-0 w-full h-full object-cover';
-      cameraFeedRef.current.appendChild(outputCanvasRef.current);
+  // Reattach camera canvas with retry logic
+  const reattachCanvas = () => {
+    if (outputCanvasRef.current && cameraFeedRef.current) {
+      const isAttached = cameraFeedRef.current.contains(outputCanvasRef.current);
       
-      console.log('Canvas parent after:', outputCanvasRef.current.parentNode);
-      console.log('Feed container children after:', cameraFeedRef.current.children.length);
-      console.log('Canvas dimensions:', {
-        width: outputCanvasRef.current.width,
-        height: outputCanvasRef.current.height,
-        style: outputCanvasRef.current.style.cssText
-      });
-      console.log('Canvas visible?', outputCanvasRef.current.offsetWidth > 0);
-      console.log('✅ Canvas reattached');
+      if (!isAttached) {
+        addLog('Reattaching camera canvas');
+        cameraFeedRef.current.innerHTML = '';
+        outputCanvasRef.current.style.width = '100%';
+        outputCanvasRef.current.style.height = '100%';
+        outputCanvasRef.current.style.objectFit = 'cover';
+        outputCanvasRef.current.className = 'absolute inset-0 w-full h-full object-cover';
+        cameraFeedRef.current.appendChild(outputCanvasRef.current);
+        addLog('Camera canvas reattached');
+      }
     } else {
-      console.log('ℹ️ Canvas already properly attached');
+      // Retry after a short delay if refs aren't ready
+      setTimeout(reattachCanvas, 50);
     }
-  } else {
-    console.log('❌ Missing refs for reattachment:', {
-      outputCanvasRef: !!outputCanvasRef.current,
-      cameraFeedRef: !!cameraFeedRef.current
-    });
-  }
+  };
   
-  console.log('🏁 CLOSE PREVIEW END');
+  // Small delay to ensure DOM is ready after state change
+  setTimeout(reattachCanvas, 10);
 };
 
 const toggleFlip = () => {
@@ -505,39 +456,7 @@ const RecordButton: React.FC = () => (
   </div>
 );
 
-// Filter selection
-const FilterBar: React.FC = () => (
-  <div className="flex space-x-3 px-4">
-    {filters.map((filter) => (
-      <button
-        key={filter.id}
-        onClick={() => {
-          addLog(`Filter selected: ${filter.name}`);
-          setSelectedFilter(filter.id);
-        }}
-        className={`
-          flex 
-          flex-col 
-          items-center 
-          space-y-1 
-          p-3 
-          rounded-2xl 
-          backdrop-blur-md 
-          border 
-          transition-all 
-          duration-200
-          ${selectedFilter === filter.id
-            ? 'bg-white/30 border-white/50 text-white'
-            : 'bg-white/10 border-white/20 text-white/70 hover:bg-white/20'
-          }
-        `}
-      >
-        <filter.icon className="w-5 h-5" />
-        <span className="text-xs font-medium">{filter.name}</span>
-      </button>
-    ))}
-  </div>
-);
+
 
 // Settings panel
 const SettingsPanel: React.FC = () => (
@@ -665,7 +584,7 @@ return (
             <div className="text-sm font-medium">Camera Kit</div>
             {selectedFilter !== 'none' && (
               <div className="text-xs text-white/60">
-                {filters.find(f => f.id === selectedFilter)?.name}
+
               </div>
             )}
           </div>
@@ -685,10 +604,7 @@ return (
         </div>
       )}
 
-      {/* Filter selection */}
-      <div className="absolute bottom-32 inset-x-0 z-10">
-        <FilterBar />
-      </div>
+
 
       {/* Bottom controls */}
       <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-10">
