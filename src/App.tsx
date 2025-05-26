@@ -1,5 +1,12 @@
 // Get best supported video format
 const getBestMimeType = (): string => {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  
+  if (isIOS) {
+    console.log('Using codec: video/mp4 (iOS detected)');
+    return 'video/mp4';
+  }
+  
   const codecs = [
     'video/mp4;codecs=h264',     // Best compatibility (iOS + Android)
     'video/webm;codecs=vp9',     // High quality (modern Android)
@@ -13,7 +20,7 @@ const getBestMimeType = (): string => {
   
   console.log(`Using codec: ${supported || 'video/webm'}`);
   return supported || 'video/webm';
-};// src/App.tsx - Complete Camera Kit Integration
+ };// src/App.tsx - Complete Camera Kit Integration
 import React, { useState, useRef, useEffect } from 'react';
 import { 
 X, 
@@ -41,7 +48,7 @@ type RecordingState = 'idle' | 'recording' | 'processing';
 
 const CameraKitApp: React.FC = () => {
 console.log('🎯 Component rendering started');
-
+const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
 const [cameraState, setCameraState] = useState<CameraState>('initializing');
 const [recordingState, setRecordingState] = useState<RecordingState>('idle');
 const [recordedVideo, setRecordedVideo] = useState<Blob | null>(null);
@@ -65,6 +72,51 @@ const addLog = (message: string) => {
   const logEntry = `[${timestamp}] ${message}`;
   console.log(logEntry);
   setDebugLogs(prev => [...prev.slice(-10), logEntry]);
+};
+const switchCamera = async () => {
+  if (!sessionRef.current || cameraState !== 'ready') return;
+
+  try {
+    setCameraState('initializing');
+    const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+    
+    // Stop current stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    
+    // Pause session
+    sessionRef.current.pause();
+    
+    // Get new stream
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { 
+        facingMode: newFacingMode,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: true
+    });
+    
+    streamRef.current = newStream;
+    
+    // Create new source
+    const source = createMediaStreamSource(newStream);
+    await sessionRef.current.setSource(source);
+    
+    // Mirror front camera
+    if (newFacingMode === 'user') {
+      source.setTransform(Transform2D.MirrorX);
+    }
+    
+    // Restart
+    sessionRef.current.play('live');
+    setCurrentFacingMode(newFacingMode);
+    setCameraState('ready');
+    
+  } catch (error) {
+    setCameraState('error');
+  }
 };
 
 useEffect(() => {
@@ -104,7 +156,7 @@ const initializeCameraKit = async () => {
     // Get camera stream
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { 
-        facingMode: CAMERA_KIT_CONFIG.camera.facingMode,
+        facingMode: currentFacingMode,
         width: { ideal: 1280 },
         height: { ideal: 720 }
       },
@@ -506,42 +558,50 @@ console.log(`🎬 Rendering with state: camera=${cameraState}, recording=${recor
 // Preview screen
 if (showPreview && recordedVideo) {
   return (
-    <div className="fixed inset-0 bg-black flex flex-col">
-      <div className="flex justify-between items-center p-4 bg-gradient-to-b from-black/50 to-transparent">
-        <button
-          onClick={closePreview}
-          className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        <h2 className="text-white font-semibold">Preview</h2>
-        <div className="w-10" />
+  <div className="fixed inset-0 bg-black flex flex-col">
+      {/* Top controls */}
+      <div className="absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-20">
+        <div className="flex justify-between items-center">
+          <button
+            onClick={closePreview}
+            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <h2 className="text-white font-semibold">Preview</h2>
+          <div className="w-10" />
+        </div>
       </div>
 
+      {/* Video container with proper mobile handling */}
       <div className="flex-1 flex items-center justify-center">
-        <video
-          src={URL.createObjectURL(recordedVideo)}
-          controls
-          autoPlay
-          loop
-          muted
-          className="max-w-full max-h-full rounded-lg"
-        />
+      <video
+        src={URL.createObjectURL(recordedVideo)}
+        controls
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="w-full h-full object-cover"
+      />
       </div>
 
-      <div className="flex justify-center space-x-6 p-8">
-        <button
-          onClick={downloadVideo}
-          className="w-16 h-16 rounded-full bg-blue-500 hover:bg-blue-600 flex items-center justify-center text-white transition-colors"
-        >
-          <Download className="w-6 h-6" />
-        </button>
-        <button
-          onClick={shareVideo}
-          className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center text-white transition-colors"
-        >
-          <Share className="w-6 h-6" />
-        </button>
+      {/* Bottom overlay controls */}
+      <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-20">
+      <div className="flex items-center justify-center space-x-8">
+          <ControlButton 
+            icon={Download} 
+            onClick={downloadVideo} 
+            label="Download"
+            size="lg"
+          />
+          <ControlButton 
+            icon={Share} 
+            onClick={shareVideo} 
+            label="Share"
+            size="lg"
+          />
+        </div>
       </div>
     </div>
   );
@@ -581,7 +641,11 @@ return (
             label="Settings"
           />
           <div className="text-white text-center">
-            <div className="text-sm font-medium">Camera Kit</div>
+            <img 
+              src="src/images/attribution.png" 
+              alt="Attribution" 
+              className="h-4 mx-auto"
+            />
             {selectedFilter !== 'none' && (
               <div className="text-xs text-white/60">
 
@@ -620,7 +684,7 @@ return (
           
           <ControlButton 
             icon={RotateCcw} 
-            onClick={() => addLog('Switch camera clicked')} 
+            onClick={switchCamera}
             label="Switch Camera"
             size="lg"
           />
