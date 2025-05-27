@@ -16,11 +16,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    chunkSizeWarningLimit: 1000, // Add this line
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          icons: ['lucide-react']
+          icons: ['lucide-react'],
+          camera: ['@snap/camera-kit'] // Add this line
         }
       }
     }
