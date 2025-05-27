@@ -1,7 +1,7 @@
 import type { CameraKitConfig } from '../types/camera';
 
 export const CAMERA_KIT_CONFIG: CameraKitConfig = {
-  apiToken: 'API-TOKEN',
+  apiToken: 'API KEY',
   lensId: '04441cd2-8e9d-420b-b293-90b5df8f577f',
   lensGroupId: 'a0fecab7-26c6-4d63-9101-d25ff7fdd6ee',
   
