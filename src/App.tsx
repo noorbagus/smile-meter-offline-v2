@@ -1,7 +1,7 @@
 // src/App.tsx - Optimized Camera Kit Initialization
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
-  X, Share, Circle, Square, RotateCcw, Settings, Download,
+  X, Share, Share2, Send, Circle, Square, RotateCcw, Settings, Download,
   Play, Camera, Video, Sparkles, Zap, Stars, FlipHorizontal
 } from 'lucide-react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
@@ -10,28 +10,38 @@ import { CAMERA_KIT_CONFIG, validateConfig } from './config/cameraKit';
 // Preload Camera Kit instance (singleton pattern)
 let cameraKitInstance: any = null;
 let isBootstrapping = false;
+let preloadPromise: Promise<any> | null = null;
 
 const preloadCameraKit = async () => {
-  if (cameraKitInstance || isBootstrapping) return cameraKitInstance;
+  // Return existing instance if available
+  if (cameraKitInstance) return cameraKitInstance;
   
-  try {
-    isBootstrapping = true;
-    console.log('🚀 Preloading Camera Kit...');
-    
-    validateConfig();
-    cameraKitInstance = await bootstrapCameraKit({ 
-      apiToken: CAMERA_KIT_CONFIG.apiToken 
-    });
-    
-    console.log('✅ Camera Kit preloaded');
-    return cameraKitInstance;
-  } catch (error) {
-    console.error('❌ Failed to preload Camera Kit:', error);
-    cameraKitInstance = null;
-    throw error;
-  } finally {
-    isBootstrapping = false;
-  }
+  // Return existing promise if already bootstrapping
+  if (preloadPromise) return preloadPromise;
+  
+  preloadPromise = (async () => {
+    try {
+      isBootstrapping = true;
+      console.log('🚀 Preloading Camera Kit...');
+      
+      validateConfig();
+      cameraKitInstance = await bootstrapCameraKit({ 
+        apiToken: CAMERA_KIT_CONFIG.apiToken 
+      });
+      
+      console.log('✅ Camera Kit preloaded');
+      return cameraKitInstance;
+    } catch (error) {
+      console.error('❌ Failed to preload Camera Kit:', error);
+      cameraKitInstance = null;
+      preloadPromise = null; // Reset promise so it can be retried
+      throw error;
+    } finally {
+      isBootstrapping = false;
+    }
+  })();
+  
+  return preloadPromise;
 };
 
 // Start preloading immediately when module loads
@@ -83,8 +93,16 @@ const CameraKitApp: React.FC = () => {
         audio: CAMERA_KIT_CONFIG.camera.audio
       });
 
-      // Step 2: Use preloaded Camera Kit instance
-      const cameraKit = await preloadCameraKit();
+      // Step 2: Ensure Camera Kit is properly loaded
+      let cameraKit = cameraKitInstance;
+      if (!cameraKit) {
+        addLog('Camera Kit not preloaded, bootstrapping now...');
+        cameraKit = await preloadCameraKit();
+      }
+      
+      if (!cameraKit) {
+        throw new Error('Failed to initialize Camera Kit instance');
+      }
       
       // Step 3: Create session and get stream in parallel
       const [session, stream] = await Promise.all([
@@ -223,17 +241,10 @@ const CameraKitApp: React.FC = () => {
     }
   }, [currentFacingMode, cameraState, addLog]);
 
-  // Optimized recording with better codec detection
   const getBestMimeType = useCallback((): string => {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    
-    if (isIOS) {
-      addLog('📱 iOS detected - using H.264');
-      return 'video/mp4';
-    }
-    
     const codecs = [
-      'video/mp4;codecs=h264,aac',
+      'video/mp4;codecs=h264,aac',    // Prioritas utama
+      'video/mp4',                    // Fallback MP4
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
       'video/webm'
@@ -543,7 +554,7 @@ const CameraKitApp: React.FC = () => {
               size="lg"
             />
             <ControlButton 
-              icon={Share} 
+              icon={Send} 
               onClick={shareVideo} 
               label="Share"
               size="lg"
@@ -628,13 +639,13 @@ const CameraKitApp: React.FC = () => {
         {/* Loading state - improved with progress indication */}
         {cameraState === 'initializing' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-30">
-            <div className="text-center">
-              <div className="relative">
+            <div className="text-center px-6">
+              <div className="relative w-16 h-16 mx-auto mb-6">
                 <div className="w-16 h-16 border-4 border-white/20 rounded-full"></div>
                 <div className="absolute inset-0 w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
               </div>
-              <div className="text-white text-lg font-medium mt-4">Initializing Web AR Netramaya...</div>
-              <div className="text-white/60 text-sm mt-2">Optimized loading in progress</div>
+              <div className="text-white text-lg font-medium mb-2">Initializing Web AR Netramaya...</div>
+              <div className="text-white/60 text-sm">Optimized loading in progress</div>
             </div>
           </div>
         )}

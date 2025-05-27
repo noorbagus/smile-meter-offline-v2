@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: '/web-ar/',
   plugins: [react()],
   server: {
     host: true, // Allows access from mobile devices on same network
