@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { CAMERA_KIT_CONFIG, validateConfig } from './config/cameraKit';
-
+import fixWebmDuration from 'fix-webm-duration';
 // Preload Camera Kit instance (singleton pattern)
 let cameraKitInstance: any = null;
 let isBootstrapping = false;
@@ -54,7 +54,7 @@ const CameraKitApp: React.FC = () => {
   const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
   const [cameraState, setCameraState] = useState<CameraState>('initializing');
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
-  const [recordedVideo, setRecordedVideo] = useState<Blob | null>(null);
+  const [recordedVideo, setRecordedVideo] = useState<Blob | File | null>(null);
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
@@ -258,63 +258,58 @@ const CameraKitApp: React.FC = () => {
     return supported || 'video/webm';
   }, [addLog]);
 
-  const startRecording = useCallback(() => {
-    if (!outputCanvasRef.current || cameraState !== 'ready') {
-      addLog('❌ Cannot start recording - canvas not ready');
-      return;
-    }
+const startRecording = useCallback(() => {
+  if (!streamRef.current || cameraState !== 'ready') {
+    addLog('❌ Cannot start recording - stream not ready');
+    return;
+  }
 
-    try {
-      // Create high-quality stream
-      const canvasStream = outputCanvasRef.current.captureStream(60);
-      
-      // Add audio from original stream
-      if (streamRef.current) {
-        const audioTracks = streamRef.current.getAudioTracks();
-        audioTracks.forEach(track => canvasStream.addTrack(track));
+  try {
+    // Use original camera stream instead of canvas
+    const recordStream = streamRef.current.clone();
+    
+    const mediaRecorder = new MediaRecorder(recordStream, {
+      mimeType: 'video/mp4',
+      videoBitsPerSecond: 1000000
+    });
+
+    const chunks: Blob[] = [];
+    
+    mediaRecorder.ondataavailable = (event: BlobEvent) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
       }
+    };
 
-      const mimeType = getBestMimeType();
-      const mediaRecorder = new MediaRecorder(canvasStream, {
-        mimeType,
-        videoBitsPerSecond: CAMERA_KIT_CONFIG.recording.videoBitsPerSecond
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/mp4' });
+      const file = new File([blob], `lens-video-${Date.now()}.mp4`, {
+        type: 'video/mp4',
+        lastModified: Date.now()
       });
-
-      const chunks: Blob[] = [];
       
-      mediaRecorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        setRecordedVideo(blob);
-        setShowPreview(true);
-        setRecordingState('idle');
-        addLog('✅ Recording completed');
-      };
-
-      mediaRecorder.onerror = (event) => {
-        addLog(`❌ Recording error: ${event}`);
-        setRecordingState('idle');
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start(1000); // Collect data every second
-      setRecordingState('recording');
-      addLog('🎬 Recording started');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      addLog(`❌ Failed to start recording: ${errorMessage}`);
+      setRecordedVideo(file);
+      setShowPreview(true);
       setRecordingState('idle');
-    }
-  }, [cameraState, getBestMimeType, addLog]);
+      addLog('✅ Recording completed');
+    };
+
+    mediaRecorderRef.current = mediaRecorder;
+    mediaRecorder.start(100);
+    setRecordingState('recording');
+    addLog('🎬 Recording started');
+  } catch (error) {
+    addLog(`❌ Failed to start recording: ${error}`);
+    setRecordingState('idle');
+  }
+}, [cameraState, addLog]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && recordingState === 'recording') {
-      mediaRecorderRef.current.stop();
+      // Add 500ms delay for Android
+      setTimeout(() => {
+        mediaRecorderRef.current?.stop();
+      }, 500);
       setRecordingState('processing');
       addLog('⏹️ Recording stopped');
     }
@@ -322,11 +317,14 @@ const CameraKitApp: React.FC = () => {
 
   const toggleRecording = useCallback(() => {
     if (recordingState === 'recording') {
-      stopRecording();
+      // Only stop if recorded > 2 seconds
+      if (recordingTime >= 2) {
+        stopRecording();
+      }
     } else {
       startRecording();
     }
-  }, [recordingState, startRecording, stopRecording]);
+  }, [recordingState, recordingTime, startRecording, stopRecording]);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -380,11 +378,14 @@ const CameraKitApp: React.FC = () => {
     if (!recordedVideo) return;
     
     try {
-      const fileExtension = recordedVideo.type.includes('mp4') ? '.mp4' : '.webm';
-      const file = new File([recordedVideo], `lens-video${fileExtension}`, {
-        type: recordedVideo.type
-      });
-
+      // Use existing file directly if it's already a File
+      const file = recordedVideo instanceof File ? 
+        recordedVideo : 
+        new File([recordedVideo], `lens-video-${Date.now()}.mp4`, {
+          type: recordedVideo.type,
+          lastModified: Date.now()
+        });
+  
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           files: [file],
