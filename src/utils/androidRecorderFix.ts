@@ -1,4 +1,6 @@
 // src/utils/androidRecorderFix.ts - Complete Android video sharing solution
+import fixWebmDuration from 'fix-webm-duration';
+
 export const detectAndroid = (): boolean => {
   return /Android/i.test(navigator.userAgent);
 };
@@ -28,8 +30,10 @@ export const getOptimizedRecorderOptions = () => {
     if (MediaRecorder.isTypeSupported(mimeType)) {
       return {
         mimeType,
-        videoBitsPerSecond: isAndroid ? 2000000 : 2500000,
+        videoBitsPerSecond: isAndroid ? 1500000 : 2500000, // Lower for Android
         audioBitsPerSecond: 128000,
+        audioBitrateMode: 'constant', // ADD THIS
+        keyFrameInterval: 30 // ADD THIS
       };
     }
   }
@@ -115,35 +119,42 @@ export class EnhancedMediaRecorder {
       if (this.chunks.length === 0) {
         throw new Error('No recorded data available');
       }
-
-      // Determine final mime type
+  
       const recorderMimeType = this.recorder?.mimeType || 'video/mp4';
       const isMP4 = recorderMimeType.includes('mp4');
       
-      // Create blob with proper mime type
       const blob = new Blob(this.chunks, { 
         type: isMP4 ? 'video/mp4' : recorderMimeType
       });
-
-      // Create file with Android-optimized properties
+  
+      // Fix duration metadata
+      let fixedBlob: Blob;
+      try {
+        const fixWebmDuration = (await import('fix-webm-duration')).default;
+        fixedBlob = await fixWebmDuration(blob, duration);
+        this.addLog(`✅ Duration metadata fixed: ${actualDurationSeconds}s`);
+      } catch (error) {
+        this.addLog(`⚠️ Duration fix failed: ${error}`);
+        fixedBlob = blob;
+      }
+  
       const timestamp = Date.now();
       const extension = isMP4 ? 'mp4' : 'webm';
       const filename = `lens_video_${timestamp}.${extension}`;
       
-      const file = new File([blob], filename, {
-        type: isMP4 ? 'video/mp4' : blob.type,
+      const finalFile = new File([fixedBlob], filename, {
+        type: fixedBlob.type,
         lastModified: timestamp
       });
-
-      // Add metadata for tracking and compatibility
-      (file as any).recordingDuration = actualDurationSeconds;
-      (file as any).isAndroidRecording = this.isAndroid;
-      (file as any).originalMimeType = recorderMimeType;
-      (file as any).optimizedForSharing = this.isAndroid && isMP4;
-
-      this.addLog(`✅ Recording processed: ${actualDurationSeconds}s, ${this.formatFileSize(file.size)}, ${file.type}`);
-      this.onComplete(file);
-
+  
+      (finalFile as any).recordingDuration = actualDurationSeconds;
+      (finalFile as any).isAndroidRecording = this.isAndroid;
+      (finalFile as any).originalMimeType = recorderMimeType;
+      (finalFile as any).optimizedForSharing = this.isAndroid && isMP4;
+  
+      this.addLog(`✅ Recording processed: ${actualDurationSeconds}s, ${this.formatFileSize(finalFile.size)}, ${finalFile.type}`);
+      this.onComplete(finalFile);
+  
     } catch (error) {
       this.addLog(`❌ Processing failed: ${error}`);
       throw error;

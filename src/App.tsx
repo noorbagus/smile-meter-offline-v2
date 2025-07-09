@@ -1,4 +1,4 @@
-// src/App.tsx - Updated with Android video sharing fix
+// src/App.tsx - Fixed version with duplicate removal and proper closePreview
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   X, Share, Share2, Send, Circle, Square, RotateCcw, Settings, Download,
@@ -51,6 +51,22 @@ const preloadCameraKit = async () => {
 // Start preloading immediately
 preloadCameraKit().catch(console.error);
 
+// React-managed canvas component
+const CanvasContainer: React.FC<{ outputCanvas: HTMLCanvasElement | null }> = ({ outputCanvas }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (outputCanvas && containerRef.current) {
+      // Clear and append canvas safely
+      const container = containerRef.current;
+      container.innerHTML = '';
+      container.appendChild(outputCanvas);
+    }
+  }, [outputCanvas]);
+  
+  return <div ref={containerRef} className="absolute inset-0 w-full h-full" />;
+};
+
 type CameraState = 'initializing' | 'ready' | 'error';
 type RecordingState = 'idle' | 'recording' | 'processing';
 
@@ -80,6 +96,25 @@ const CameraKitApp: React.FC = () => {
     console.log(logEntry);
     setDebugLogs(prev => [...prev.slice(-10), logEntry]);
   }, []);
+
+  // React-safe canvas attachment - no manual DOM manipulation
+  const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
+    if (!canvas) return;
+    
+    // Just store the canvas reference and configure it
+    outputCanvasRef.current = canvas;
+    canvas.style.cssText = `
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      position: absolute;
+      inset: 0;
+    `;
+    canvas.className = 'absolute inset-0 w-full h-full object-cover';
+    
+    isAttachedRef.current = true;
+    addLog('✅ Camera output configured');
+  }, [addLog]);
 
   // Initialize Camera Kit
   const initializeCameraKit = useCallback(async () => {
@@ -158,45 +193,7 @@ const CameraKitApp: React.FC = () => {
       console.error('Camera Kit initialization failed:', error);
       setCameraState('error');
     }
-  }, [currentFacingMode, addLog]);
-
-// Fix for App.tsx - Replace the attachCameraOutput function
-
-const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
-  if (!cameraFeedRef.current) return;
-
-  requestAnimationFrame(() => {
-    if (cameraFeedRef.current) {
-      // Safe DOM cleanup - check for existing children
-      while (cameraFeedRef.current.firstChild) {
-        try {
-          cameraFeedRef.current.removeChild(cameraFeedRef.current.firstChild);
-        } catch (e) {
-          // Element already removed
-          break;
-        }
-      }
-      
-      outputCanvasRef.current = canvas;
-      canvas.style.cssText = `
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        position: absolute;
-        inset: 0;
-      `;
-      canvas.className = 'absolute inset-0 w-full h-full object-cover';
-      
-      try {
-        cameraFeedRef.current.appendChild(canvas);
-        isAttachedRef.current = true;
-        addLog('✅ Camera output attached');
-      } catch (e) {
-        addLog(`⚠️ Canvas attachment failed: ${e}`);
-      }
-    }
-  });
-}, [addLog]);
+  }, [currentFacingMode, addLog, attachCameraOutput]);
 
   const switchCamera = useCallback(async () => {
     if (!sessionRef.current || cameraState !== 'ready') return;
@@ -247,40 +244,40 @@ const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
       addLog('❌ Cannot start recording - stream not ready');
       return;
     }
-
+   
     try {
       const canvas = outputCanvasRef.current;
       if (!canvas) {
         addLog('❌ Canvas not available for AR recording');
         return;
       }
-
-      const canvasStream = canvas.captureStream(30);
+   
+      const canvasStream = canvas.captureStream(24);
       
       if (streamRef.current.getAudioTracks().length > 0) {
         const audioTrack = streamRef.current.getAudioTracks()[0];
         canvasStream.addTrack(audioTrack);
       }
-
+   
       enhancedRecorderRef.current = new EnhancedMediaRecorder(
         canvasStream,
         (file: File) => {
           setRecordedVideo(file);
           setShowPreview(true);
           setRecordingState('idle');
-          addLog('✅ AR recording completed with enhanced processing');
+          addLog('✅ AR recording completed');
         },
         addLog
       );
-
+   
       enhancedRecorderRef.current.start();
       setRecordingState('recording');
-      addLog(`🎬 AR recording started (${detectAndroid() ? 'Android MP4' : 'Standard'} mode)`);
+      addLog('🎬 AR recording started');
     } catch (error) {
       addLog(`❌ Failed to start AR recording: ${error}`);
       setRecordingState('idle');
     }
-  }, [cameraState, addLog]);
+   }, [cameraState, addLog]);
 
   const stopRecording = useCallback(() => {
     if (enhancedRecorderRef.current && recordingState === 'recording') {
@@ -300,47 +297,16 @@ const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
     }
   }, [recordingState, recordingTime, startRecording, stopRecording]);
 
-  // Updated share function with Android fixes
   const shareVideo = async () => {
     if (!recordedVideo) return;
     
-    try {
-      const file = recordedVideo instanceof File ? 
-        recordedVideo : 
-        new File([recordedVideo], `lens-video-${Date.now()}.mp4`, {
-          type: 'video/mp4',
-          lastModified: Date.now()
-        });
-
-      const isAndroid = detectAndroid();
-      const duration = (file as any).recordingDuration;
-      const compatibility = checkSocialMediaCompatibility(file);
-      
-      addLog(`📱 Sharing ${isAndroid ? 'Android' : 'standard'} video (${duration}s)`);
-      addLog(`🎯 Compatible with: Instagram(${compatibility.instagram}), TikTok(${compatibility.tiktok})`);
-
-      if (isAndroid) {
-        const success = await shareVideoAndroid(file, addLog);
-        if (!success) {
-          showAndroidShareInstructions(file);
-          downloadVideo();
-        }
-      } else {
-        if (navigator.share && navigator.canShare?.({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: 'My AR Video',
-            text: `Check out this cool AR effect! 🎬 ${duration ? `(${duration}s)` : ''}`
-          });
-          addLog('✅ Video shared successfully');
-        } else {
-          downloadVideo();
-        }
-      }
-    } catch (error) {
-      addLog(`❌ Sharing failed: ${error}`);
-      downloadVideo();
-    }
+    const arrayBuffer = await recordedVideo.arrayBuffer();
+    const file = new File([arrayBuffer], 'video.mp4', {
+      type: 'video/mp4',
+      lastModified: Date.now()
+    });
+    
+    await navigator.share({ files: [file] });
   };
 
   const downloadVideo = () => {
@@ -376,6 +342,7 @@ const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
     }
   }, [addLog]);
 
+  // Fixed closePreview function
   const closePreview = () => {
     setShowPreview(false);
     setRecordedVideo(null);
@@ -384,11 +351,13 @@ const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
       sessionRef.current.play('live');
     }
     
+    isAttachedRef.current = false;
+    
     setTimeout(() => {
-      if (outputCanvasRef.current && cameraFeedRef.current) {
+      if (outputCanvasRef.current && cameraFeedRef.current && !isAttachedRef.current) {
         attachCameraOutput(outputCanvasRef.current);
       }
-    }, 100);
+    }, 200);
   };
 
   useEffect(() => {
@@ -524,24 +493,11 @@ const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
             </button>
             <div className="text-center">
               <h2 className="text-white font-semibold">Preview</h2>
-              {isAndroidRecording && (
-                <div className="text-xs text-green-400 mt-1">
-                  📱 Android Optimized
-                </div>
-              )}
             </div>
             <div className="w-10" />
           </div>
           
-          {/* Compatibility indicators */}
-          <div className="flex justify-center mt-2 space-x-2 text-xs">
-            <span className={`px-2 py-1 rounded ${compatibility.instagram ? 'bg-pink-500/20 text-pink-300' : 'bg-gray-500/20 text-gray-400'}`}>
-              IG {compatibility.instagram ? '✓' : '✗'}
-            </span>
-            <span className={`px-2 py-1 rounded ${compatibility.tiktok ? 'bg-black/20 text-white' : 'bg-gray-500/20 text-gray-400'}`}>
-              TT {compatibility.tiktok ? '✓' : '✗'}
-            </span>
-          </div>
+
         </div>
 
         <div className="flex-1 flex items-center justify-center">
@@ -587,16 +543,22 @@ const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
           ref={cameraFeedRef}
           className={`absolute inset-0 transition-transform duration-300 ${isFlipped ? 'scale-x-[-1]' : ''}`}
         >
-          <div className="w-full h-full bg-gradient-to-br from-pink-500/20 via-purple-500/20 to-blue-500/20 flex items-center justify-center">
-            <div className="text-white/50 text-center">
-              <Camera className="w-16 h-16 mx-auto mb-4" />
-              <p>Camera Feed {cameraState === 'ready' ? '(Live)' : '(Loading...)'}</p>
-              <p className="text-sm mt-2">State: {cameraState}</p>
-              {detectAndroid() && cameraState === 'ready' && (
-                <p className="text-xs mt-1 text-green-400">📱 Android MP4 Ready</p>
-              )}
+          {/* React-managed canvas container */}
+          <CanvasContainer outputCanvas={outputCanvasRef.current} />
+          
+          {/* Fallback content when canvas not ready */}
+          {!outputCanvasRef.current && (
+            <div className="w-full h-full bg-gradient-to-br from-pink-500/20 via-purple-500/20 to-blue-500/20 flex items-center justify-center">
+              <div className="text-white/50 text-center">
+                <Camera className="w-16 h-16 mx-auto mb-4" />
+                <p>Camera Feed {cameraState === 'ready' ? '(Live)' : '(Loading...)'}</p>
+                <p className="text-sm mt-2">State: {cameraState}</p>
+                {detectAndroid() && cameraState === 'ready' && (
+                  <p className="text-xs mt-1 text-green-400">📱 Android MP4 Ready</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Top controls */}
@@ -613,9 +575,6 @@ const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
                 alt="Attribution" 
                 className="h-4 mx-auto"
               />
-              {detectAndroid() && (
-                <div className="text-xs text-green-400 mt-1">📱 Android Mode</div>
-              )}
             </div>
             <ControlButton 
               icon={FlipHorizontal} 
@@ -666,9 +625,6 @@ const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
               </div>
               <div className="text-white text-lg font-medium mb-2">
                 Initializing Web AR Netramaya...
-              </div>
-              <div className="text-white/60 text-sm">
-                {detectAndroid() ? 'Android MP4 optimization enabled' : 'Optimized loading in progress'}
               </div>
             </div>
           </div>

@@ -1,9 +1,9 @@
 import type { CameraKitConfig } from '../types/camera';
 
 export const CAMERA_KIT_CONFIG: CameraKitConfig = {
-  apiToken: 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI',
-  lensId: '04441cd2-8e9d-420b-b293-90b5df8f577f',
-  lensGroupId: 'a0fecab7-26c6-4d63-9101-d25ff7fdd6ee',
+  apiToken: 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-U1RBR0lOR35mMGY1ODQ4NS1iZmQ5LTRkZjEtYmQzNy1lZjgwZjU3OTg1MjAifQ.asLt4CSPEbG3-9aT7Fq0ggjRRb5QjoE-RHcWvq8I-Sg',
+  lensId: '18afcdf0-939d-4fa6-89d7-9728243de56c',
+  lensGroupId: 'cd5b1b49-4483-45ea-9772-cb241939e2ce',
   
   canvas: {
     width: window.innerWidth,
