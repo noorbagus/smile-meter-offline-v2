@@ -1,5 +1,5 @@
-// src/context/RecordingContext.tsx
-import React, { createContext, useContext, useState } from 'react';
+// src/context/RecordingContext.tsx - Fixed version
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useMediaRecorder } from '../hooks';
 import type { RecordingState } from '../hooks';
 import { 
@@ -75,6 +75,14 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     isIdle
   } = useMediaRecorder(addLog);
 
+  // Auto-show preview when recording completes
+  useEffect(() => {
+    if (recordedVideo && recordingState === 'idle') {
+      addLog('🎬 Recording completed - showing preview');
+      setShowPreview(true);
+    }
+  }, [recordedVideo, recordingState, addLog]);
+
   const shareVideo = async () => {
     if (!recordedVideo) return;
     
@@ -98,7 +106,6 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
           downloadVideo();
         }
       } else {
-        // Check if native sharing is available
         const canUseNativeShare = typeof navigator !== 'undefined' && 
           'share' in navigator && 
           typeof navigator.share === 'function';
