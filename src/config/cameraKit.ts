@@ -1,10 +1,18 @@
 import type { CameraKitConfig } from '../types/camera';
 
+// Environment variables with fallback values
+const API_TOKEN = import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-U1RBR0lOR35mMGY1ODQ4NS1iZmQ5LTRkZjEtYmQzNy1lZjgwZjU3OTg1MjAifQ.asLt4CSPEbG3-9aT7Fq0ggjRRb5QjoE-RHcWvq8I-Sg';
+
+const LENS_ID = import.meta.env.VITE_CAMERA_KIT_LENS_ID || '18afcdf0-939d-4fa6-89d7-9728243de56c';
+
+const LENS_GROUP_ID = import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || 'cd5b1b49-4483-45ea-9772-cb241939e2ce';
+
 export const CAMERA_KIT_CONFIG: CameraKitConfig = {
-  apiToken: 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-U1RBR0lOR35mMGY1ODQ4NS1iZmQ5LTRkZjEtYmQzNy1lZjgwZjU3OTg1MjAifQ.asLt4CSPEbG3-9aT7Fq0ggjRRb5QjoE-RHcWvq8I-Sg',
-  lensId: '18afcdf0-939d-4fa6-89d7-9728243de56c',
-  lensGroupId: 'cd5b1b49-4483-45ea-9772-cb241939e2ce',
-    canvas: {
+  apiToken: API_TOKEN,
+  lensId: LENS_ID,
+  lensGroupId: LENS_GROUP_ID,
+  
+  canvas: {
     width: window.innerWidth,
     height: window.innerHeight
   },
@@ -23,17 +31,46 @@ export const CAMERA_KIT_CONFIG: CameraKitConfig = {
 export const validateConfig = (): boolean => {
   const { apiToken, lensId, lensGroupId } = CAMERA_KIT_CONFIG;
   
+  // Log configuration for debugging (remove in production)
+  if (import.meta.env.MODE === 'development') {
+    console.log('🔧 Camera Kit Config:', {
+      hasApiToken: !!apiToken,
+      apiTokenLength: apiToken?.length,
+      lensId: lensId,
+      lensGroupId: lensGroupId,
+      environment: import.meta.env.MODE
+    });
+  }
+  
   if (!apiToken || apiToken === 'YOUR_API_TOKEN_HERE') {
-    throw new Error('API Token is required');
+    throw new Error('API Token is required. Please check your environment variables.');
   }
   
   if (!lensId || lensId === 'YOUR_LENS_ID_HERE') {
-    throw new Error('Lens ID is required');
+    throw new Error('Lens ID is required. Please check your environment variables.');
   }
   
   if (!lensGroupId || lensGroupId === 'YOUR_LENS_GROUP_ID_HERE') {
-    throw new Error('Lens Group ID is required');
+    throw new Error('Lens Group ID is required. Please check your environment variables.');
+  }
+  
+  // Validate token format (basic JWT check)
+  if (!apiToken.includes('.') || apiToken.split('.').length !== 3) {
+    throw new Error('Invalid API Token format. Please check your token.');
   }
   
   return true;
+};
+
+// Helper function to get current configuration
+export const getCurrentConfig = () => {
+  return {
+    isProduction: import.meta.env.PROD,
+    isDevelopment: import.meta.env.DEV,
+    mode: import.meta.env.MODE,
+    hasEnvToken: !!import.meta.env.VITE_CAMERA_KIT_API_TOKEN,
+    hasEnvLensId: !!import.meta.env.VITE_CAMERA_KIT_LENS_ID,
+    hasEnvGroupId: !!import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID,
+    config: CAMERA_KIT_CONFIG
+  };
 };

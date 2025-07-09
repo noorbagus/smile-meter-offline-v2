@@ -1,694 +1,289 @@
-// src/App.tsx - Fixed version with duplicate removal and proper closePreview
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+// src/App.tsx - Refactored with separated components and hooks
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  X, Share, Share2, Send, Circle, Square, RotateCcw, Settings, Download,
-  Play, Camera, Video, Sparkles, Zap, Stars, FlipHorizontal
-} from 'lucide-react';
-import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
-import { CAMERA_KIT_CONFIG, validateConfig } from './config/cameraKit';
-import { 
-  EnhancedMediaRecorder, 
-  detectAndroid, 
-  shareVideoAndroid, 
-  showAndroidShareInstructions,
-  checkSocialMediaCompatibility 
-} from './utils/androidRecorderFix';
+  CameraProvider, 
+  RecordingProvider, 
+  useCameraContext, 
+  useRecordingContext 
+} from './context';
+import {
+  LoadingScreen,
+  ErrorScreen,
+  CameraFeed,
+  CameraControls,
+  RecordingControls,
+  VideoPreview,
+  ShareModal,
+  SettingsPanel
+} from './components';
 
-// Preload Camera Kit instance (singleton pattern)
-let cameraKitInstance: any = null;
-let isBootstrapping = false;
-let preloadPromise: Promise<any> | null = null;
-
-const preloadCameraKit = async () => {
-  if (cameraKitInstance) return cameraKitInstance;
-  if (preloadPromise) return preloadPromise;
-  
-  preloadPromise = (async () => {
-    try {
-      isBootstrapping = true;
-      console.log('🚀 Preloading Camera Kit...');
-      
-      validateConfig();
-      cameraKitInstance = await bootstrapCameraKit({ 
-        apiToken: CAMERA_KIT_CONFIG.apiToken 
-      });
-      
-      console.log('✅ Camera Kit preloaded');
-      return cameraKitInstance;
-    } catch (error) {
-      console.error('❌ Failed to preload Camera Kit:', error);
-      cameraKitInstance = null;
-      preloadPromise = null;
-      throw error;
-    } finally {
-      isBootstrapping = false;
-    }
-  })();
-  
-  return preloadPromise;
-};
-
-// Start preloading immediately
-preloadCameraKit().catch(console.error);
-
-// React-managed canvas component
-const CanvasContainer: React.FC<{ outputCanvas: HTMLCanvasElement | null }> = ({ outputCanvas }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    if (outputCanvas && containerRef.current) {
-      // Clear and append canvas safely
-      const container = containerRef.current;
-      container.innerHTML = '';
-      container.appendChild(outputCanvas);
-    }
-  }, [outputCanvas]);
-  
-  return <div ref={containerRef} className="absolute inset-0 w-full h-full" />;
-};
-
-type CameraState = 'initializing' | 'ready' | 'error';
-type RecordingState = 'idle' | 'recording' | 'processing';
-
-const CameraKitApp: React.FC = () => {
-  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
-  const [cameraState, setCameraState] = useState<CameraState>('initializing');
-  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
-  const [recordedVideo, setRecordedVideo] = useState<Blob | File | null>(null);
-  const [showPreview, setShowPreview] = useState<boolean>(false);
-  const [showSettings, setShowSettings] = useState<boolean>(false);
+/**
+ * Main Camera Application Component
+ */
+const CameraApp: React.FC = () => {
+  // UI State
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
-  const [recordingTime, setRecordingTime] = useState<number>(0);
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
 
-  const cameraFeedRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const sessionRef = useRef<any>(null);
-  const timerRef = useRef<number | null>(null);
-  const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isAttachedRef = useRef<boolean>(false);
-  const lensRepositoryRef = useRef<any>(null);
-  const enhancedRecorderRef = useRef<EnhancedMediaRecorder | null>(null);
+  // Get camera context
+  const {
+    cameraState,
+    currentFacingMode,
+    permissionState,
+    errorInfo,
+    initializeCameraKit,
+    switchCamera,
+    requestCameraStream,
+    requestPermission,
+    checkCameraPermission,
+    cameraFeedRef,
+    getCanvas,
+    getStream,
+    addLog,
+    debugLogs,
+    exportLogs,
+    isReady
+  } = useCameraContext();
 
-  const addLog = useCallback((message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `[${timestamp}] ${message}`;
-    console.log(logEntry);
-    setDebugLogs(prev => [...prev.slice(-10), logEntry]);
-  }, []);
+  // Get recording context
+  const {
+    recordingState,
+    recordingTime,
+    recordedVideo,
+    toggleRecording,
+    formatTime,
+    shareVideo,
+    downloadVideo,
+    showPreview,
+    setShowPreview,
+    showShareModal,
+    setShowShareModal
+  } = useRecordingContext();
 
-  // React-safe canvas attachment - no manual DOM manipulation
-  const attachCameraOutput = useCallback((canvas: HTMLCanvasElement) => {
-    if (!canvas) return;
-    
-    // Just store the canvas reference and configure it
-    outputCanvasRef.current = canvas;
-    canvas.style.cssText = `
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      position: absolute;
-      inset: 0;
-    `;
-    canvas.className = 'absolute inset-0 w-full h-full object-cover';
-    
-    isAttachedRef.current = true;
-    addLog('✅ Camera output configured');
-  }, [addLog]);
-
-  // Initialize Camera Kit
-  const initializeCameraKit = useCallback(async () => {
+  // Initialize app
+  const initializeApp = useCallback(async () => {
     try {
-      addLog('🚀 Starting Camera Kit initialization...');
-      setCameraState('initializing');
-
-      const streamPromise = navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: currentFacingMode,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 }
-        },
-        audio: CAMERA_KIT_CONFIG.camera.audio
-      });
-
-      let cameraKit = cameraKitInstance;
-      if (!cameraKit) {
-        addLog('Camera Kit not preloaded, bootstrapping now...');
-        cameraKit = await preloadCameraKit();
-      }
+      addLog('🎬 Starting app initialization...');
       
-      if (!cameraKit) {
-        throw new Error('Failed to initialize Camera Kit instance');
-      }
-      
-      const [session, stream] = await Promise.all([
-        cameraKit.createSession(),
-        streamPromise
-      ]);
-
-      sessionRef.current = session;
-      streamRef.current = stream;
-      addLog('✅ Session and stream ready');
-
-      session.events.addEventListener("error", (event: any) => {
-        addLog(`❌ Session error: ${event.detail}`);
-        setCameraState('error');
-      });
-
-      const source = createMediaStreamSource(stream);
-      await session.setSource(source);
-      
-      if (currentFacingMode === 'user') {
-        source.setTransform(Transform2D.MirrorX);
-      }
-      addLog('✅ Camera source configured');
-
-      if (!lensRepositoryRef.current) {
-        const { lenses } = await cameraKit.lensRepository.loadLensGroups([
-          CAMERA_KIT_CONFIG.lensGroupId
-        ]);
-        lensRepositoryRef.current = lenses;
-        addLog('✅ Lens repository cached');
-      }
-
-      const lenses = lensRepositoryRef.current;
-      if (lenses && lenses.length > 0) {
-        const targetLens = lenses.find((lens: any) => lens.id === CAMERA_KIT_CONFIG.lensId) || lenses[0];
-        await session.applyLens(targetLens);
-        addLog(`✅ Lens applied: ${targetLens.name}`);
-      }
-
-      session.play('live');
-
-      if (cameraFeedRef.current && session.output.live && !isAttachedRef.current) {
-        attachCameraOutput(session.output.live);
-      }
-
-      setCameraState('ready');
-      addLog('🎉 Camera Kit initialization complete');
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      addLog(`❌ Camera Kit error: ${errorMessage}`);
-      console.error('Camera Kit initialization failed:', error);
-      setCameraState('error');
-    }
-  }, [currentFacingMode, addLog, attachCameraOutput]);
-
-  const switchCamera = useCallback(async () => {
-    if (!sessionRef.current || cameraState !== 'ready') return;
-
-    try {
-      setCameraState('initializing');
-      const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      
-      addLog(`🔄 Switching to ${newFacingMode} camera`);
-
-      sessionRef.current.pause();
-      
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: newFacingMode,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 }
-        },
-        audio: true
-      });
-      
-      streamRef.current = newStream;
-      
-      const source = createMediaStreamSource(newStream);
-      await sessionRef.current.setSource(source);
-      
-      if (newFacingMode === 'user') {
-        source.setTransform(Transform2D.MirrorX);
-      }
-      
-      sessionRef.current.play('live');
-      setCurrentFacingMode(newFacingMode);
-      setCameraState('ready');
-      
-      addLog(`✅ Switched to ${newFacingMode} camera`);
-    } catch (error) {
-      addLog(`❌ Camera switch failed: ${error}`);
-      setCameraState('error');
-    }
-  }, [currentFacingMode, cameraState, addLog]);
-
-  const startRecording = useCallback(() => {
-    if (!streamRef.current || cameraState !== 'ready') {
-      addLog('❌ Cannot start recording - stream not ready');
-      return;
-    }
-   
-    try {
-      const canvas = outputCanvasRef.current;
-      if (!canvas) {
-        addLog('❌ Canvas not available for AR recording');
+      // Step 1: Check permissions
+      const hasPermission = await checkCameraPermission();
+      if (!hasPermission) {
+        addLog('❌ Permission check failed');
         return;
       }
-   
-      const canvasStream = canvas.captureStream(24);
-      
-      if (streamRef.current.getAudioTracks().length > 0) {
-        const audioTrack = streamRef.current.getAudioTracks()[0];
-        canvasStream.addTrack(audioTrack);
+
+      // Step 2: Request camera stream
+      const stream = await requestCameraStream(currentFacingMode, true);
+      if (!stream) {
+        addLog('❌ Failed to get camera stream');
+        return;
       }
-   
-      enhancedRecorderRef.current = new EnhancedMediaRecorder(
-        canvasStream,
-        (file: File) => {
-          setRecordedVideo(file);
-          setShowPreview(true);
-          setRecordingState('idle');
-          addLog('✅ AR recording completed');
-        },
-        addLog
-      );
-   
-      enhancedRecorderRef.current.start();
-      setRecordingState('recording');
-      addLog('🎬 AR recording started');
+
+      // Step 3: Initialize Camera Kit
+      const success = await initializeCameraKit(stream, cameraFeedRef);
+      if (success) {
+        addLog('🎉 App initialization complete');
+      }
+
     } catch (error) {
-      addLog(`❌ Failed to start AR recording: ${error}`);
-      setRecordingState('idle');
+      addLog(`❌ App initialization failed: ${error}`);
     }
-   }, [cameraState, addLog]);
+  }, [
+    addLog,
+    checkCameraPermission,
+    requestCameraStream,
+    currentFacingMode,
+    initializeCameraKit,
+    cameraFeedRef
+  ]);
 
-  const stopRecording = useCallback(() => {
-    if (enhancedRecorderRef.current && recordingState === 'recording') {
-      enhancedRecorderRef.current.stop();
-      setRecordingState('processing');
-      addLog('⏹️ Enhanced recording stopped');
-    }
-  }, [recordingState, addLog]);
-
-  const toggleRecording = useCallback(() => {
-    if (recordingState === 'recording') {
-      if (recordingTime >= 2) {
-        stopRecording();
+  // Handle camera switch
+  const handleSwitchCamera = useCallback(async () => {
+    if (!isReady) return;
+    
+    try {
+      addLog('🔄 Switching camera...');
+      const newStream = await switchCamera();
+      if (newStream) {
+        addLog('✅ Camera switched successfully');
       }
-    } else {
-      startRecording();
+    } catch (error) {
+      addLog(`❌ Camera switch failed: ${error}`);
     }
-  }, [recordingState, recordingTime, startRecording, stopRecording]);
+  }, [isReady, switchCamera, addLog]);
 
-  const shareVideo = async () => {
-    if (!recordedVideo) return;
+  // Handle recording toggle
+  const handleToggleRecording = useCallback(() => {
+    const canvas = getCanvas();
+    const stream = getStream();
     
-    const arrayBuffer = await recordedVideo.arrayBuffer();
-    const file = new File([arrayBuffer], 'video.mp4', {
-      type: 'video/mp4',
-      lastModified: Date.now()
-    });
-    
-    await navigator.share({ files: [file] });
-  };
+    if (!canvas) {
+      addLog('❌ Canvas not available for recording');
+      return;
+    }
 
-  const downloadVideo = () => {
-    if (!recordedVideo) return;
-    
-    const url = URL.createObjectURL(recordedVideo);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'lens-video' + (recordedVideo.type.includes('mp4') ? '.mp4' : '.webm');
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    addLog('💾 Video downloaded');
-  };
+    toggleRecording(canvas, stream || undefined);
+  }, [getCanvas, getStream, toggleRecording, addLog]);
 
-  const cleanup = useCallback(() => {
-    if (enhancedRecorderRef.current) {
-      enhancedRecorderRef.current.stop();
-      enhancedRecorderRef.current = null;
-    }
-    
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      addLog('🔄 Camera stream stopped');
-    }
-    if (sessionRef.current) {
-      sessionRef.current.pause();
-      addLog('⏸️ Camera Kit session paused');
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-  }, [addLog]);
-
-  // Fixed closePreview function
-  const closePreview = () => {
+  // Handle video preview close
+  const handleClosePreview = useCallback(() => {
     setShowPreview(false);
-    setRecordedVideo(null);
-    
-    if (sessionRef.current) {
-      sessionRef.current.play('live');
-    }
-    
-    isAttachedRef.current = false;
-    
-    setTimeout(() => {
-      if (outputCanvasRef.current && cameraFeedRef.current && !isAttachedRef.current) {
-        attachCameraOutput(outputCanvasRef.current);
-      }
-    }, 200);
-  };
+    addLog('📱 Preview closed');
+  }, [setShowPreview, addLog]);
 
-  useEffect(() => {
-    addLog('🎬 Component mounted - starting initialization');
-    initializeCameraKit();
-    
-    return cleanup;
-  }, [initializeCameraKit, cleanup, addLog]);
-
-  useEffect(() => {
-    if (recordingState === 'recording') {
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
+  // Handle share video
+  const handleShareVideo = useCallback(async () => {
+    if (showShareModal) {
+      await shareVideo();
+      setShowShareModal(false);
     } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      setRecordingTime(0);
+      setShowShareModal(true);
     }
-    
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [recordingState]);
+  }, [showShareModal, shareVideo, setShowShareModal]);
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  // Handle download video
+  const handleDownloadVideo = useCallback(() => {
+    downloadVideo();
+    setShowShareModal(false);
+  }, [downloadVideo, setShowShareModal]);
 
-  // UI Components
-  const ControlButton: React.FC<{
-    icon: React.ElementType;
-    onClick: () => void;
-    label: string;
-    className?: string;
-    size?: 'sm' | 'md' | 'lg';
-    disabled?: boolean;
-  }> = ({ icon: Icon, onClick, label, className = '', size = 'md', disabled = false }) => {
-    const sizeClasses = {
-      sm: 'w-10 h-10',
-      md: 'w-12 h-12',
-      lg: 'w-16 h-16'
-    };
+  // Initialize on mount
+  useEffect(() => {
+    addLog('🚀 App component mounted');
+    initializeApp();
+  }, [initializeApp, addLog]);
 
-    return (
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        className={`
-          ${sizeClasses[size]} 
-          rounded-full 
-          backdrop-blur-md 
-          bg-white/20 
-          border 
-          border-white/30 
-          flex 
-          items-center 
-          justify-center 
-          text-white 
-          hover:bg-white/30 
-          transition-all 
-          duration-200 
-          active:scale-95
-          disabled:opacity-50
-          disabled:cursor-not-allowed
-          ${className}
-        `}
-      >
-        <Icon className="w-5 h-5" />
-      </button>
-    );
-  };
+  // Handle manual permission request
+  const handleRequestPermission = useCallback(async () => {
+    try {
+      addLog('🔒 Requesting camera permission...');
+      const stream = await requestPermission();
+      if (stream) {
+        // Stop the permission test stream
+        stream.getTracks().forEach(track => track.stop());
+        // Reinitialize with proper stream
+        initializeApp();
+      }
+    } catch (error) {
+      addLog(`❌ Permission request failed: ${error}`);
+    }
+  }, [requestPermission, initializeApp, addLog]);
 
-  const RecordButton: React.FC = () => (
-    <div className="relative">
-      <button
-        onClick={toggleRecording}
-        disabled={cameraState !== 'ready'}
-        className={`
-          w-20 h-20 
-          rounded-full 
-          border-4 
-          border-white 
-          flex 
-          items-center 
-          justify-center 
-          transition-all 
-          duration-200 
-          active:scale-95
-          disabled:opacity-50
-          ${recordingState === 'recording' 
-            ? 'bg-red-500 hover:bg-red-600' 
-            : 'bg-white/20 hover:bg-white/30 backdrop-blur-md'
-          }
-        `}
-      >
-        {recordingState === 'recording' ? (
-          <Square className="w-8 h-8 text-white fill-white" />
-        ) : recordingState === 'processing' ? (
-          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
-        ) : (
-          <Circle className="w-12 h-12 text-red-500 fill-red-500" />
-        )}
-      </button>
-      
-      {recordingState === 'recording' && (
-        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
-          <div className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-            {formatTime(recordingTime)}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  // Handle retry initialization
+  const handleRetry = useCallback(() => {
+    addLog('🔄 Retrying initialization...');
+    initializeApp();
+  }, [initializeApp, addLog]);
 
-  // Preview screen
+  // Render video preview screen
   if (showPreview && recordedVideo) {
-    const isAndroidRecording = (recordedVideo as any).isAndroidRecording;
-    const compatibility = checkSocialMediaCompatibility(recordedVideo as File);
-    
     return (
-      <div className="fixed inset-0 bg-black flex flex-col">
-        <div className="absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-20">
-          <div className="flex justify-between items-center">
-            <button
-              onClick={closePreview}
-              className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="text-center">
-              <h2 className="text-white font-semibold">Preview</h2>
-            </div>
-            <div className="w-10" />
-          </div>
-          
-
-        </div>
-
-        <div className="flex-1 flex items-center justify-center">
-          <video
-            src={URL.createObjectURL(recordedVideo)}
-            controls
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="metadata"
-            className="w-full h-full object-cover"
+      <>
+        <VideoPreview
+          recordedVideo={recordedVideo}
+          onClose={handleClosePreview}
+          onDownload={handleDownloadVideo}
+          onShare={handleShareVideo}
+        />
+        
+        {showShareModal && (
+          <ShareModal
+            recordedVideo={recordedVideo}
+            isOpen={showShareModal}
+            onClose={() => setShowShareModal(false)}
+            onDownload={handleDownloadVideo}
+            addLog={addLog}
           />
-        </div>
-
-        <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-20">
-          <div className="flex items-center justify-center space-x-8">
-            <ControlButton 
-              icon={Download} 
-              onClick={downloadVideo} 
-              label="Download"
-              size="lg"
-            />
-            <ControlButton 
-              icon={Send} 
-              onClick={shareVideo} 
-              label="Share"
-              size="lg"
-            />
-          </div>
-        </div>
-      </div>
+        )}
+      </>
     );
   }
 
-  // Main camera interface
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
-      <div className="flex-1 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900"></div>
-        
-        <div 
-          ref={cameraFeedRef}
-          className={`absolute inset-0 transition-transform duration-300 ${isFlipped ? 'scale-x-[-1]' : ''}`}
-        >
-          {/* React-managed canvas container */}
-          <CanvasContainer outputCanvas={outputCanvasRef.current} />
-          
-          {/* Fallback content when canvas not ready */}
-          {!outputCanvasRef.current && (
-            <div className="w-full h-full bg-gradient-to-br from-pink-500/20 via-purple-500/20 to-blue-500/20 flex items-center justify-center">
-              <div className="text-white/50 text-center">
-                <Camera className="w-16 h-16 mx-auto mb-4" />
-                <p>Camera Feed {cameraState === 'ready' ? '(Live)' : '(Loading...)'}</p>
-                <p className="text-sm mt-2">State: {cameraState}</p>
-                {detectAndroid() && cameraState === 'ready' && (
-                  <p className="text-xs mt-1 text-green-400">📱 Android MP4 Ready</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Camera Feed */}
+      <CameraFeed
+        cameraFeedRef={cameraFeedRef}
+        cameraState={cameraState}
+        recordingState={recordingState}
+        isFlipped={isFlipped}
+      />
 
-        {/* Top controls */}
-        <div className="absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-10">
-          <div className="flex justify-between items-center">
-            <ControlButton 
-              icon={Settings} 
-              onClick={() => setShowSettings(!showSettings)} 
-              label="Settings"
-            />
-            <div className="text-white text-center">
-              <img 
-                src="images/attribution.png" 
-                alt="Attribution" 
-                className="h-4 mx-auto"
-              />
-            </div>
-            <ControlButton 
-              icon={FlipHorizontal} 
-              onClick={() => setIsFlipped(!isFlipped)} 
-              label="Flip"
-            />
-          </div>
-        </div>
+      {/* Top Controls */}
+      <CameraControls
+        onSettings={() => setShowSettings(true)}
+        onFlip={() => setIsFlipped(!isFlipped)}
+      />
 
-        {/* Recording indicator */}
-        {recordingState === 'recording' && (
-          <div className="absolute top-20 left-4 flex items-center space-x-2 bg-red-500/80 backdrop-blur-md rounded-full px-3 py-2 z-10">
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-            <span className="text-white text-sm font-medium">
-              REC {detectAndroid() ? '(MP4)' : ''}
-            </span>
-          </div>
-        )}
+      {/* Bottom Recording Controls */}
+      <RecordingControls
+        recordingState={recordingState}
+        recordingTime={recordingTime}
+        onToggleRecording={handleToggleRecording}
+        onGallery={() => addLog('📱 Gallery clicked')}
+        onSwitchCamera={handleSwitchCamera}
+        formatTime={formatTime}
+        disabled={!isReady}
+      />
 
-        {/* Bottom controls */}
-        <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-10">
-          <div className="flex items-center justify-between">
-            <ControlButton 
-              icon={Video} 
-              onClick={() => addLog('Gallery clicked')} 
-              label="Gallery"
-              size="lg"
-            />
-            
-            <RecordButton />
-            
-            <ControlButton 
-              icon={RotateCcw} 
-              onClick={switchCamera}
-              label="Switch Camera"
-              size="lg"
-            />
-          </div>
-        </div>
+      {/* Loading Screen */}
+      {cameraState === 'initializing' && (
+        <LoadingScreen 
+          message="Initializing Web AR Netramaya..."
+          subMessage="Setting up camera and AR engine..."
+        />
+      )}
 
-        {/* Loading state */}
-        {cameraState === 'initializing' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-30">
-            <div className="text-center px-6">
-              <div className="relative w-16 h-16 mx-auto mb-6">
-                <div className="w-16 h-16 border-4 border-white/20 rounded-full"></div>
-                <div className="absolute inset-0 w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-              </div>
-              <div className="text-white text-lg font-medium mb-2">
-                Initializing Web AR Netramaya...
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Error Screen */}
+      {(cameraState === 'error' || cameraState === 'permission_denied' || cameraState === 'https_required') && errorInfo && (
+        <ErrorScreen
+          errorInfo={errorInfo}
+          permissionState={permissionState}
+          onRequestPermission={handleRequestPermission}
+          onRetry={handleRetry}
+          debugInfo={{
+            protocol: location.protocol,
+            hostname: location.hostname,
+            userAgent: navigator.userAgent
+          }}
+        />
+      )}
 
-        {/* Error state */}
-        {cameraState === 'error' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-30">
-            <div className="text-center px-6">
-              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <X className="w-8 h-8 text-red-400" />
-              </div>
-              <div className="text-white text-lg font-medium mb-2">AR Camera Error</div>
-              <div className="text-white/60 text-sm mb-4">Please check your configuration</div>
-              <button
-                onClick={initializeCameraKit}
-                className="px-4 py-2 bg-white/20 rounded-lg text-white hover:bg-white/30 transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Settings overlay */}
-        {showSettings && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-30 p-6">
-            <div className="bg-white/10 rounded-lg p-6 max-w-md mx-auto mt-20">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-white text-lg font-semibold">Settings</h3>
-                <button
-                  onClick={() => setShowSettings(false)}
-                  className="text-white/60 hover:text-white"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="text-white/80 text-sm">
-                  <p className="mb-2">🎬 Recording Format:</p>
-                  <p className="text-xs text-white/60">
-                    {detectAndroid() ? 
-                      '📱 Android: MP4 (H.264) - Optimized for Instagram/TikTok' : 
-                      '💻 Standard: MP4/WebM - Universal compatibility'
-                    }
-                  </p>
-                </div>
-                
-                <div className="text-white/80 text-sm">
-                  <p className="mb-2">📊 Debug Logs:</p>
-                  <div className="bg-black/30 rounded p-2 text-xs font-mono max-h-32 overflow-y-auto">
-                    {debugLogs.slice(-5).map((log, i) => (
-                      <div key={i} className="text-white/60">{log}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        debugLogs={debugLogs}
+        onExportLogs={exportLogs}
+      />
     </div>
   );
 };
 
-export default CameraKitApp;
+/**
+ * App with Context Providers
+ */
+const App: React.FC = () => {
+  return (
+    <CameraProvider>
+      <RecordingProvider addLog={() => {}}>
+        <AppWithContext />
+      </RecordingProvider>
+    </CameraProvider>
+  );
+};
+
+/**
+ * App component that uses contexts
+ */
+const AppWithContext: React.FC = () => {
+  const { addLog } = useCameraContext();
+  
+  return (
+    <RecordingProvider addLog={addLog}>
+      <CameraApp />
+    </RecordingProvider>
+  );
+};
+
+export default App;
