@@ -1,4 +1,4 @@
-// src/utils/androidRecorderFix.ts - Fixed version
+// src/utils/androidRecorderFix.ts - Complete Android video sharing solution
 import fixWebmDuration from 'fix-webm-duration';
 
 export const detectAndroid = (): boolean => {
@@ -17,7 +17,7 @@ export const getOptimizedRecorderOptions = () => {
     'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC
     'video/mp4;codecs=h264,aac',
     'video/mp4',
-    'video/webm;codecs=vp8,opus', // Fallback ke VP8 (lebih kompatibel)
+    'video/webm;codecs=vp9,opus',
     'video/webm'
   ] : [
     'video/mp4;codecs=h264,aac',
@@ -30,9 +30,8 @@ export const getOptimizedRecorderOptions = () => {
     if (MediaRecorder.isTypeSupported(mimeType)) {
       return {
         mimeType,
-        videoBitsPerSecond: isAndroid ? 2000000 : 2500000, // Tingkatkan bitrate
+        videoBitsPerSecond: isAndroid ? 2000000 : 2500000,
         audioBitsPerSecond: 128000,
-        // Hilangkan parameter yang tidak standar
       };
     }
   }
@@ -43,12 +42,12 @@ export const getOptimizedRecorderOptions = () => {
   };
 };
 
-export class EnhancedMediaRecorder {
+// Fixed MediaRecorder with duration metadata handling
+export class FixedMediaRecorder {
   private recorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
   private startTime: number = 0;
-  private endTime: number = 0; // Tambahkan tracking end time
-  private recordingTimer: number | null = null;
+  private endTime: number = 0;
   private isAndroid: boolean;
 
   constructor(
@@ -65,12 +64,11 @@ export class EnhancedMediaRecorder {
     try {
       this.recorder = new MediaRecorder(this.stream, options);
       this.chunks = [];
-      this.startTime = performance.now(); // Gunakan performance.now() untuk akurasi
+      this.startTime = performance.now();
       
       this.recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           this.chunks.push(event.data);
-          this.addLog(`📊 Chunk: ${event.data.size} bytes`);
         }
       };
       
@@ -83,9 +81,8 @@ export class EnhancedMediaRecorder {
         this.addLog(`❌ Recording error: ${event}`);
       };
       
-      // Perbaiki time slice - gunakan nilai yang lebih besar untuk Android
-      const timeSlice = this.isAndroid ? 1000 : 1000; // Sama untuk semua platform
-      this.recorder.start(timeSlice);
+      // Konsisten time slice untuk semua platform
+      this.recorder.start(1000);
       
       this.addLog(`🎬 Recording started (${options.mimeType})`);
     } catch (error) {
@@ -96,11 +93,7 @@ export class EnhancedMediaRecorder {
 
   stop(): void {
     if (this.recorder && this.recorder.state === 'recording') {
-      if (this.recordingTimer) {
-        clearTimeout(this.recordingTimer);
-      }
-      
-      // Hilangkan delay untuk Android - stop langsung
+      // Stop langsung tanpa delay
       this.recorder.stop();
       this.addLog('⏹️ Recording stopped immediately');
     }
@@ -108,7 +101,7 @@ export class EnhancedMediaRecorder {
 
   private async processRecording(): Promise<void> {
     try {
-      const actualDuration = this.endTime - this.startTime; // Durasi sebenarnya
+      const actualDuration = this.endTime - this.startTime;
       const durationSeconds = Math.floor(actualDuration / 1000);
       
       if (this.chunks.length === 0) {
@@ -159,6 +152,7 @@ export class EnhancedMediaRecorder {
       (finalFile as any).originalMimeType = recorderMimeType;
       (finalFile as any).optimizedForInstagram = this.isAndroid && isMP4;
       (finalFile as any).chunkCount = this.chunks.length;
+      (finalFile as any).fixedMetadata = true;
 
       this.addLog(`✅ Final file: ${durationSeconds}s, ${this.formatFileSize(finalFile.size)}, ${finalFile.type}`);
       this.onComplete(finalFile);
@@ -179,19 +173,18 @@ export class EnhancedMediaRecorder {
   }
 }
 
-// Perbaikan sharing untuk Instagram
-export const shareVideoAndroid = async (
+// Enhanced sharing function with metadata validation
+export const shareVideoWithMetadata = async (
   file: File, 
   addLog: (msg: string) => void
 ): Promise<boolean> => {
   try {
-    // Validasi file sebelum sharing
     const duration = (file as any).recordingDuration || 0;
-    const fileSize = file.size;
+    const hasMetadata = (file as any).fixedMetadata || false;
     
-    addLog(`📊 Sharing file: ${duration}s, ${(fileSize / 1024 / 1024).toFixed(1)}MB`);
+    addLog(`📱 Sharing: ${duration}s, metadata: ${hasMetadata ? 'Fixed' : 'Original'}`);
     
-    // Instagram memerlukan minimal 3 detik, maksimal 60 detik
+    // Validasi untuk Instagram
     if (duration < 3) {
       addLog('⚠️ Video terlalu pendek untuk Instagram (min 3s)');
       showVideoTooShortMessage();
@@ -224,7 +217,7 @@ export const shareVideoAndroid = async (
   }
 };
 
-// Tambahan: pesan jika video terlalu pendek
+// Pesan jika video terlalu pendek
 const showVideoTooShortMessage = () => {
   const message = document.createElement('div');
   message.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-white px-4 py-2 rounded-lg z-50 text-sm font-medium';
@@ -255,6 +248,10 @@ const downloadWithInstructions = (file: File, addLog: (msg: string) => void) => 
   showAndroidShareInstructions(file);
 };
 
+// Legacy functions untuk backward compatibility
+export const shareVideoAndroid = shareVideoWithMetadata;
+export const EnhancedMediaRecorder = FixedMediaRecorder;
+
 // Update instruksi sharing
 export const showAndroidShareInstructions = (file: File) => {
   const overlay = document.createElement('div');
@@ -262,6 +259,7 @@ export const showAndroidShareInstructions = (file: File) => {
   
   const duration = (file as any).recordingDuration || 0;
   const isMP4 = file.type.includes('mp4');
+  const hasMetadata = (file as any).fixedMetadata || false;
   
   overlay.innerHTML = `
     <div class="bg-white rounded-lg p-6 max-w-sm mx-auto text-center">
@@ -271,6 +269,10 @@ export const showAndroidShareInstructions = (file: File) => {
         ${isMP4 ? 
           '<p class="text-green-600 font-medium mb-2">✅ MP4 format - Perfect for Instagram Stories & Reels</p>' : 
           '<p class="text-yellow-600 mb-2">⚠️ May need conversion for Instagram</p>'
+        }
+        ${hasMetadata ? 
+          '<p class="text-blue-600 text-xs mb-2">✅ Metadata fixed</p>' : 
+          '<p class="text-orange-600 text-xs mb-2">⚠️ Original metadata</p>'
         }
         <p class="text-xs">File downloaded to your device</p>
       </div>
@@ -315,4 +317,42 @@ export const checkSocialMediaCompatibility = (file: File): {
     youtube: isMP4 && size < 256 * 1024 * 1024,
     twitter: isMP4 && size < 512 * 1024 * 1024 && duration <= 140
   };
+};
+
+// Validation function untuk metadata
+export const validateVideoMetadata = async (file: File): Promise<{
+  hasDuration: boolean;
+  duration: number;
+  isInstagramReady: boolean;
+  format: string;
+}> => {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      const hasDuration = !isNaN(duration) && isFinite(duration) && duration > 0;
+      
+      resolve({
+        hasDuration,
+        duration,
+        isInstagramReady: hasDuration && duration >= 3,
+        format: file.type
+      });
+      
+      URL.revokeObjectURL(video.src);
+    };
+
+    video.onerror = () => {
+      resolve({
+        hasDuration: false,
+        duration: 0,
+        isInstagramReady: false,
+        format: file.type
+      });
+      URL.revokeObjectURL(video.src);
+    };
+
+    video.src = URL.createObjectURL(file);
+  });
 };

@@ -1,6 +1,6 @@
 // src/hooks/useMediaRecorder.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { EnhancedMediaRecorder, detectAndroid } from '../utils/androidRecorderFix';
+import { FixedMediaRecorder, detectAndroid } from '../utils/androidRecorderFix';
 
 export type RecordingState = 'idle' | 'recording' | 'processing';
 
@@ -9,7 +9,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
   const [recordingTime, setRecordingTime] = useState<number>(0);
   const [recordedVideo, setRecordedVideo] = useState<Blob | File | null>(null);
 
-  const enhancedRecorderRef = useRef<EnhancedMediaRecorder | null>(null);
+  const fixedRecorderRef = useRef<FixedMediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
 
   const startRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
@@ -27,7 +27,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
         canvasStream.addTrack(audioTrack);
       }
 
-      enhancedRecorderRef.current = new EnhancedMediaRecorder(
+      fixedRecorderRef.current = new FixedMediaRecorder(
         canvasStream,
         (file: File) => {
           setRecordedVideo(file);
@@ -37,7 +37,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
         addLog
       );
 
-      enhancedRecorderRef.current.start();
+      fixedRecorderRef.current.start();
       setRecordingState('recording');
       addLog(`🎬 Recording started (${detectAndroid() ? 'Android MP4' : 'Standard'} mode)`);
       return true;
@@ -50,8 +50,8 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
   }, [addLog]);
 
   const stopRecording = useCallback(() => {
-    if (enhancedRecorderRef.current && recordingState === 'recording') {
-      enhancedRecorderRef.current.stop();
+    if (fixedRecorderRef.current && recordingState === 'recording') {
+      fixedRecorderRef.current.stop();
       setRecordingState('processing');
       addLog('⏹️ Recording stopped');
     }
@@ -74,9 +74,9 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
   }, []);
 
   const cleanup = useCallback(() => {
-    if (enhancedRecorderRef.current) {
-      enhancedRecorderRef.current.stop();
-      enhancedRecorderRef.current = null;
+    if (fixedRecorderRef.current) {
+      fixedRecorderRef.current.stop();
+      fixedRecorderRef.current = null;
     }
     if (timerRef.current) {
       clearInterval(timerRef.current);

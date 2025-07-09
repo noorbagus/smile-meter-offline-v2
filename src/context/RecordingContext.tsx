@@ -1,9 +1,9 @@
-// src/context/RecordingContext.tsx - Fixed version
+// src/context/RecordingContext.tsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useMediaRecorder } from '../hooks';
 import type { RecordingState } from '../hooks';
 import { 
-  shareVideoAndroid, 
+  shareVideoWithMetadata, 
   showAndroidShareInstructions,
   detectAndroid 
 } from '../utils/androidRecorderFix';
@@ -100,7 +100,7 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
       addLog(`📱 Sharing ${isAndroid ? 'Android' : 'standard'} video (${duration}s)`);
 
       if (isAndroid) {
-        const success = await shareVideoAndroid(file, addLog);
+        const success = await shareVideoWithMetadata(file, addLog);
         if (!success) {
           showAndroidShareInstructions(file);
           downloadVideo();
