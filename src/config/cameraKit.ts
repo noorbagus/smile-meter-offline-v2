@@ -4,8 +4,7 @@ export const CAMERA_KIT_CONFIG: CameraKitConfig = {
   apiToken: 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-U1RBR0lOR35mMGY1ODQ4NS1iZmQ5LTRkZjEtYmQzNy1lZjgwZjU3OTg1MjAifQ.asLt4CSPEbG3-9aT7Fq0ggjRRb5QjoE-RHcWvq8I-Sg',
   lensId: '18afcdf0-939d-4fa6-89d7-9728243de56c',
   lensGroupId: 'cd5b1b49-4483-45ea-9772-cb241939e2ce',
-  
-  canvas: {
+    canvas: {
     width: window.innerWidth,
     height: window.innerHeight
   },
