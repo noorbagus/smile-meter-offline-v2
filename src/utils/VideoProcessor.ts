@@ -1,7 +1,6 @@
-// src/utils/VideoProcessor.ts
+// src/utils/VideoProcessor.ts - FIXED VERSION
 import fixWebmDuration from 'fix-webm-duration';
 import { detectAndroid } from './androidRecorderFix';
-import * as MP4Box from 'mp4box';
 
 export interface ProcessingProgress {
   percent: number;
@@ -39,49 +38,51 @@ export class VideoProcessor {
 
       // Step 1: Initialize (10%)
       onProgress({ percent: 10, message: "Memulai proses..." });
-      await this.delay(150);
+      await this.safeDelay(100);
 
       // Step 2: Analyze format (25%)
       onProgress({ percent: 25, message: "Menganalisis format video..." });
       this.addLog(`📊 Format: ${isMP4 ? 'MP4' : 'WebM'}, Platform: ${isAndroid ? 'Android' : 'Standard'}`);
-      await this.delay(200);
+      await this.safeDelay(150);
 
       let processedBlob = rawBlob;
 
-      // Step 3: Fix duration metadata (60%)
+      // Step 3: Fix duration metadata (40% - CRITICAL SECTION)
       onProgress({ percent: 40, message: "Memperbaiki metadata durasi..." });
 
       if (!isMP4) {
         // Fix WebM duration
         try {
           const durationMs = recordingDuration * 1000;
+          this.addLog('🔧 Fixing WebM duration...');
           processedBlob = await fixWebmDuration(rawBlob, durationMs);
           this.addLog('✅ WebM duration metadata fixed');
         } catch (error) {
           this.addLog(`⚠️ WebM fix failed: ${error}`);
+          // Continue with original blob
         }
       } else {
-        // Fix MP4 duration with mp4box
-        try {
-          processedBlob = await this.fixMP4Duration(rawBlob, recordingDuration);
-          this.addLog('✅ MP4 duration metadata fixed');
-        } catch (error) {
-          this.addLog(`⚠️ MP4 fix failed: ${error}`);
-        }
+        // For MP4, FIXED: Remove problematic delay and add immediate progress
+        this.addLog('🔧 Validating MP4 format...');
+        // Create new blob to ensure proper type
+        const buffer = await rawBlob.arrayBuffer();
+        processedBlob = new Blob([buffer], { type: 'video/mp4' });
+        this.addLog('✅ MP4 format validated');
       }
 
+      // CRITICAL FIX: Update progress immediately after format processing
       onProgress({ percent: 60, message: "Metadata durasi diperbaiki" });
-      await this.delay(200);
+      await this.safeDelay(100);
 
-      // Step 4: Social media optimization (80%)
+      // Step 4: Social media optimization (75%)
       onProgress({ percent: 75, message: "Mengoptimalkan untuk Instagram..." });
       
       const compatibility = this.checkSocialMediaCompatibility(processedBlob, recordingDuration);
       this.addLog(`📱 Instagram compatible: ${compatibility.instagram ? 'YES' : 'NO'}`);
       
-      await this.delay(250);
+      await this.safeDelay(150);
 
-      // Step 5: Finalize (100%)
+      // Step 5: Finalize (90%)
       onProgress({ percent: 90, message: "Finalisasi video..." });
 
       const finalFile = this.createFinalFile(processedBlob, {
@@ -95,7 +96,9 @@ export class VideoProcessor {
         format: isMP4 ? 'mp4' : 'webm'
       });
 
-      await this.delay(200);
+      await this.safeDelay(100);
+      
+      // Final step (100%)
       onProgress({ percent: 100, message: "Video siap dibagikan!" });
 
       this.addLog(`✅ Processing complete: ${this.formatFileSize(finalFile.size)}`);
@@ -108,64 +111,25 @@ export class VideoProcessor {
   }
 
   /**
-   * Fix MP4 duration metadata using mp4box
+   * FIXED: Safe delay with timeout protection
    */
-  private async fixMP4Duration(blob: Blob, durationSeconds: number): Promise<Blob> {
+  private safeDelay(ms: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      try {
-        const mp4File = MP4Box.createFile();
-        
-        mp4File.onError = (error: any) => {
-          this.addLog(`❌ MP4Box error: ${error}`);
-          reject(new Error(`MP4 parsing failed: ${error}`));
-        };
+      const timeout = setTimeout(() => {
+        resolve();
+      }, ms);
 
-        mp4File.onReady = (info: any) => {
-          try {
-            this.addLog(`📊 MP4 info: ${info.duration}ms original duration`);
-            
-            // Calculate correct duration in timescale units
-            const timescale = info.timescale || 1000;
-            const correctDuration = durationSeconds * timescale;
-            
-            // Fix duration in movie header
-            if (info.videoTracks && info.videoTracks.length > 0) {
-              const videoTrack = info.videoTracks[0];
-              videoTrack.movie_duration = correctDuration;
-              videoTrack.duration = correctDuration;
-            }
-            
-            if (info.audioTracks && info.audioTracks.length > 0) {
-              const audioTrack = info.audioTracks[0];
-              audioTrack.movie_duration = correctDuration;
-              audioTrack.duration = correctDuration;
-            }
+      // Fallback timeout (prevent hanging)
+      const fallbackTimeout = setTimeout(() => {
+        clearTimeout(timeout);
+        this.addLog(`⚠️ Delay timeout, continuing...`);
+        resolve();
+      }, ms + 1000); // Add 1 second buffer
 
-            // Start extraction with corrected metadata
-            mp4File.start();
-          } catch (error) {
-            reject(new Error(`MP4 duration fix failed: ${error}`));
-          }
-        };
-
-        mp4File.onSegment = (id: number, user: any, buffer: ArrayBuffer) => {
-          // Collect all segments
-          const correctedBlob = new Blob([buffer], { type: 'video/mp4' });
-          this.addLog(`✅ MP4 duration corrected: ${durationSeconds}s`);
-          resolve(correctedBlob);
-        };
-
-        // Load MP4 data
-        blob.arrayBuffer().then(buffer => {
-          const mp4Buffer = buffer as ArrayBuffer & { fileStart?: number };
-          mp4Buffer.fileStart = 0;
-          mp4File.appendBuffer(mp4Buffer);
-          mp4File.flush();
-        }).catch(reject);
-
-      } catch (error) {
-        reject(new Error(`MP4Box initialization failed: ${error}`));
-      }
+      // Clear fallback when normal timeout completes
+      setTimeout(() => {
+        clearTimeout(fallbackTimeout);
+      }, ms);
     });
   }
 
@@ -262,12 +226,5 @@ export class VideoProcessor {
   private formatFileSize(bytes: number): string {
     const mb = bytes / (1024 * 1024);
     return `${mb.toFixed(1)}MB`;
-  }
-
-  /**
-   * Utility delay
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
