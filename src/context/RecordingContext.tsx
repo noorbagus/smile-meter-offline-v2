@@ -67,7 +67,7 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
 }) => {
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [showShareModal, setShowShareModal] = useState<boolean>(false);
-  const [autoShareEnabled, setAutoShareEnabled] = useState<boolean>(true); // NEW: Default auto-share
+  const [autoShareEnabled, setAutoShareEnabled] = useState<boolean>(false); // NEW: Default auto-share
   
   // Minimal processing state (background only)
   const [isVideoProcessing, setIsVideoProcessing] = useState<boolean>(false);
