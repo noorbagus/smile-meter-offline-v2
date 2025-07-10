@@ -1,9 +1,7 @@
 // src/components/video/ShareModal.tsx
 import React from 'react';
-import { X, Share2, Download, Copy } from 'lucide-react';
+import { X, Share2, Download } from 'lucide-react';
 import { 
-  shareVideoAndroid, 
-  showAndroidShareInstructions,
   checkSocialMediaCompatibility,
   detectAndroid 
 } from '../../utils/androidRecorderFix';
@@ -13,6 +11,7 @@ interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDownload: () => void;
+  onProcessAndShare: () => void;
   addLog: (message: string) => void;
 }
 
@@ -21,6 +20,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   isOpen,
   onClose,
   onDownload,
+  onProcessAndShare,
   addLog
 }) => {
   if (!isOpen) return null;
@@ -35,74 +35,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const isAndroid = detectAndroid();
   const duration = (file as any).recordingDuration;
   const compatibility = checkSocialMediaCompatibility(file);
-
-  // Check if native sharing is available
-  const canUseNativeShare = typeof navigator !== 'undefined' && 
-    'share' in navigator && 
-    typeof navigator.share === 'function';
-
-  // Check if clipboard API is available
-  const canUseClipboard = typeof navigator !== 'undefined' && 
-    'clipboard' in navigator && 
-    navigator.clipboard && 
-    'write' in navigator.clipboard &&
-    typeof navigator.clipboard.write === 'function';
-
-  const handleNativeShare = async () => {
-    try {
-      addLog(`📱 Sharing ${isAndroid ? 'Android' : 'standard'} video (${duration}s)`);
-      
-      if (isAndroid) {
-        const success = await shareVideoAndroid(file, addLog);
-        if (!success) {
-          showAndroidShareInstructions(file);
-          onDownload();
-        }
-      } else {
-        if (canUseNativeShare) {
-          // Check if we can share this specific file
-          const canShareFile = navigator.canShare ? navigator.canShare({ files: [file] }) : true;
-          
-          if (canShareFile) {
-            await navigator.share({
-              files: [file],
-              title: 'My AR Video',
-              text: `Check out this cool AR effect! 🎬 ${duration ? `(${duration}s)` : ''}`
-            });
-            addLog('✅ Video shared successfully');
-          } else {
-            addLog('❌ Cannot share this file type');
-            onDownload();
-          }
-        } else {
-          onDownload();
-        }
-      }
-      onClose();
-    } catch (error) {
-      addLog(`❌ Sharing failed: ${error}`);
-      onDownload();
-    }
-  };
-
-  const handleCopyToClipboard = async () => {
-    try {
-      if (canUseClipboard) {
-        const clipboardItem = new ClipboardItem({
-          [file.type]: file
-        });
-        await navigator.clipboard.write([clipboardItem]);
-        addLog('✅ Video copied to clipboard');
-        onClose();
-      } else {
-        addLog('❌ Clipboard not supported');
-        onDownload();
-      }
-    } catch (error) {
-      addLog(`❌ Copy failed: ${error}`);
-      onDownload();
-    }
-  };
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-6">
@@ -137,27 +69,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </div>
         </div>
 
-        {/* Share options */}
+        {/* Main share button */}
         <div className="space-y-3">
-          {canUseNativeShare && (
-            <button
-              onClick={handleNativeShare}
-              className="w-full flex items-center justify-center space-x-3 px-4 py-3 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium transition-colors"
-            >
-              <Share2 className="w-5 h-5" />
-              <span>Share via Apps</span>
-            </button>
-          )}
-
-          {canUseClipboard && (
-            <button
-              onClick={handleCopyToClipboard}
-              className="w-full flex items-center justify-center space-x-3 px-4 py-3 bg-green-500 hover:bg-green-600 rounded-lg text-white font-medium transition-colors"
-            >
-              <Copy className="w-5 h-5" />
-              <span>Copy to Clipboard</span>
-            </button>
-          )}
+          <button
+            onClick={() => {
+              addLog('🎬 Starting video processing...');
+              onProcessAndShare();
+              onClose();
+            }}
+            className="w-full flex items-center justify-center space-x-3 px-4 py-3 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium transition-colors"
+          >
+            <Share2 className="w-5 h-5" />
+            <span>Process & Share</span>
+          </button>
 
           <button
             onClick={() => {
@@ -167,16 +91,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             className="w-full flex items-center justify-center space-x-3 px-4 py-3 bg-white/20 hover:bg-white/30 rounded-lg text-white font-medium transition-colors"
           >
             <Download className="w-5 h-5" />
-            <span>Download</span>
+            <span>Download Only</span>
           </button>
         </div>
 
-        {/* Platform tips */}
-        {isAndroid && (
-          <div className="mt-4 p-3 bg-green-500/10 rounded-lg text-xs text-green-300">
-            💡 <strong>Android Tip:</strong> Your video is optimized for social media sharing!
-          </div>
-        )}
+        {/* Info tip */}
+        <div className="mt-4 p-3 bg-blue-500/10 rounded-lg text-xs text-blue-300">
+          💡 <strong>Process & Share:</strong> Optimizes video metadata for Instagram and other apps
+        </div>
       </div>
     </div>
   );

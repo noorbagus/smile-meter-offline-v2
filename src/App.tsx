@@ -1,4 +1,4 @@
-// src/App.tsx - Refactored with separated components and hooks
+// src/App.tsx - Updated with RenderingModal integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -14,7 +14,8 @@ import {
   RecordingControls,
   VideoPreview,
   ShareModal,
-  SettingsPanel
+  SettingsPanel,
+  RenderingModal
 } from './components';
 
 /**
@@ -52,12 +53,19 @@ const CameraApp: React.FC = () => {
     recordedVideo,
     toggleRecording,
     formatTime,
-    shareVideo,
     downloadVideo,
     showPreview,
     setShowPreview,
     showShareModal,
-    setShowShareModal
+    setShowShareModal,
+    // New processing state
+    processAndShareVideo,
+    isVideoProcessing,
+    processingProgress,
+    processingMessage,
+    processingError,
+    showRenderingModal,
+    setShowRenderingModal
   } = useRecordingContext();
 
   // Initialize app
@@ -65,21 +73,18 @@ const CameraApp: React.FC = () => {
     try {
       addLog('🎬 Starting app initialization...');
       
-      // Step 1: Check permissions
       const hasPermission = await checkCameraPermission();
       if (!hasPermission) {
         addLog('❌ Permission check failed');
         return;
       }
 
-      // Step 2: Request camera stream
       const stream = await requestCameraStream(currentFacingMode, true);
       if (!stream) {
         addLog('❌ Failed to get camera stream');
         return;
       }
 
-      // Step 3: Initialize Camera Kit
       const success = await initializeCameraKit(stream, cameraFeedRef);
       if (success) {
         addLog('🎉 App initialization complete');
@@ -131,21 +136,11 @@ const CameraApp: React.FC = () => {
     addLog('📱 Preview closed');
   }, [setShowPreview, addLog]);
 
-  // Handle share video
-  const handleShareVideo = useCallback(async () => {
-    if (showShareModal) {
-      await shareVideo();
-      setShowShareModal(false);
-    } else {
-      setShowShareModal(true);
-    }
-  }, [showShareModal, shareVideo, setShowShareModal]);
-
-  // Handle download video
-  const handleDownloadVideo = useCallback(() => {
-    downloadVideo();
-    setShowShareModal(false);
-  }, [downloadVideo, setShowShareModal]);
+  // Handle process and share
+  const handleProcessAndShare = useCallback(() => {
+    addLog('🎬 Starting video processing...');
+    processAndShareVideo();
+  }, [processAndShareVideo, addLog]);
 
   // Initialize on mount
   useEffect(() => {
@@ -159,9 +154,7 @@ const CameraApp: React.FC = () => {
       addLog('🔒 Requesting camera permission...');
       const stream = await requestPermission();
       if (stream) {
-        // Stop the permission test stream
         stream.getTracks().forEach(track => track.stop());
-        // Reinitialize with proper stream
         initializeApp();
       }
     } catch (error) {
@@ -182,19 +175,34 @@ const CameraApp: React.FC = () => {
         <VideoPreview
           recordedVideo={recordedVideo}
           onClose={handleClosePreview}
-          onDownload={handleDownloadVideo}
-          onShare={handleShareVideo}
+          onDownload={downloadVideo}
+          onProcessAndShare={handleProcessAndShare}
         />
         
+        {/* Legacy ShareModal (optional) */}
         {showShareModal && (
           <ShareModal
             recordedVideo={recordedVideo}
             isOpen={showShareModal}
             onClose={() => setShowShareModal(false)}
-            onDownload={handleDownloadVideo}
+            onDownload={downloadVideo}
+            onProcessAndShare={handleProcessAndShare}
             addLog={addLog}
           />
         )}
+        
+        {/* New RenderingModal */}
+        <RenderingModal
+          isOpen={showRenderingModal}
+          progress={processingProgress}
+          message={processingMessage}
+          isComplete={processingProgress === 100 && !processingError}
+          hasError={!!processingError}
+          onCancel={() => {
+            setShowRenderingModal(false);
+            addLog('❌ Processing cancelled');
+          }}
+        />
       </>
     );
   }
@@ -255,6 +263,19 @@ const CameraApp: React.FC = () => {
         onClose={() => setShowSettings(false)}
         debugLogs={debugLogs}
         onExportLogs={exportLogs}
+      />
+
+      {/* RenderingModal for main app processing */}
+      <RenderingModal
+        isOpen={showRenderingModal && !showPreview}
+        progress={processingProgress}
+        message={processingMessage}
+        isComplete={processingProgress === 100 && !processingError}
+        hasError={!!processingError}
+        onCancel={() => {
+          setShowRenderingModal(false);
+          addLog('❌ Processing cancelled');
+        }}
       />
     </div>
   );

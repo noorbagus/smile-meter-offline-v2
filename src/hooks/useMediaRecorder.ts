@@ -11,6 +11,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
 
   const fixedRecorderRef = useRef<FixedMediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
+  const recordingStartTimeRef = useRef<number>(0);
 
   const startRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
     if (!canvas) {
@@ -27,12 +28,26 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
         canvasStream.addTrack(audioTrack);
       }
 
+      // Record start time for accurate duration
+      recordingStartTimeRef.current = performance.now();
+
       fixedRecorderRef.current = new FixedMediaRecorder(
         canvasStream,
         (file: File) => {
+          // Calculate actual recording duration
+          const endTime = performance.now();
+          const actualDurationMs = endTime - recordingStartTimeRef.current;
+          const actualDurationSeconds = Math.floor(actualDurationMs / 1000);
+          
+          // Add duration metadata to file
+          (file as any).recordingDuration = actualDurationSeconds;
+          (file as any).recordingStartTime = recordingStartTimeRef.current;
+          (file as any).recordingEndTime = endTime;
+          (file as any).actualDurationMs = actualDurationMs;
+          
           setRecordedVideo(file);
           setRecordingState('idle');
-          addLog('✅ Recording completed');
+          addLog(`✅ Recording completed: ${actualDurationSeconds}s`);
         },
         addLog
       );
@@ -53,7 +68,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
     if (fixedRecorderRef.current && recordingState === 'recording') {
       fixedRecorderRef.current.stop();
       setRecordingState('processing');
-      addLog('⏹️ Recording stopped');
+      addLog('⏹️ Recording stopped, processing...');
     }
   }, [recordingState, addLog]);
 
@@ -61,16 +76,19 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
     if (recordingState === 'recording') {
       if (recordingTime >= 2) {
         stopRecording();
+      } else {
+        addLog('⚠️ Recording too short (minimum 2 seconds)');
       }
     } else if (recordingState === 'idle') {
       startRecording(canvas, audioStream);
     }
-  }, [recordingState, recordingTime, startRecording, stopRecording]);
+  }, [recordingState, recordingTime, startRecording, stopRecording, addLog]);
 
   const clearRecording = useCallback(() => {
     setRecordedVideo(null);
     setRecordingTime(0);
     setRecordingState('idle');
+    recordingStartTimeRef.current = 0;
   }, []);
 
   const cleanup = useCallback(() => {

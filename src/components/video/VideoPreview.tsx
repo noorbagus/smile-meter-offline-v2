@@ -1,6 +1,6 @@
 // src/components/video/VideoPreview.tsx
 import React from 'react';
-import { X, Download, Send } from 'lucide-react';
+import { X, Download, Share2 } from 'lucide-react';
 import { ControlButton } from '../ui';
 import { checkSocialMediaCompatibility } from '../../utils/androidRecorderFix';
 
@@ -8,20 +8,22 @@ interface VideoPreviewProps {
   recordedVideo: Blob | File;
   onClose: () => void;
   onDownload: () => void;
-  onShare: () => void;
+  onProcessAndShare: () => void;
 }
 
 export const VideoPreview: React.FC<VideoPreviewProps> = ({
   recordedVideo,
   onClose,
   onDownload,
-  onShare
+  onProcessAndShare
 }) => {
   const isAndroidRecording = (recordedVideo as any).isAndroidRecording;
+  const duration = (recordedVideo as any).recordingDuration;
   const compatibility = checkSocialMediaCompatibility(recordedVideo as File);
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
+      {/* Header */}
       <div className="absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-20">
         <div className="flex justify-between items-center">
           <button
@@ -33,9 +35,9 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           
           <div className="text-center">
             <h2 className="text-white font-semibold">Preview</h2>
-            {isAndroidRecording && (
-              <div className="text-xs text-green-400 mt-1">
-                📱 Android Optimized
+            {duration && (
+              <div className="text-xs text-white/70 mt-1">
+                {duration}s • Ready to share
               </div>
             )}
           </div>
@@ -54,12 +56,10 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           <span className={`px-2 py-1 rounded ${compatibility.youtube ? 'bg-red-500/20 text-red-300' : 'bg-gray-500/20 text-gray-400'}`}>
             YT {compatibility.youtube ? '✓' : '✗'}
           </span>
-          <span className={`px-2 py-1 rounded ${compatibility.twitter ? 'bg-blue-500/20 text-blue-300' : 'bg-gray-500/20 text-gray-400'}`}>
-            X {compatibility.twitter ? '✓' : '✗'}
-          </span>
         </div>
       </div>
 
+      {/* Video Player */}
       <div className="flex-1 flex items-center justify-center">
         <video
           src={URL.createObjectURL(recordedVideo)}
@@ -73,20 +73,30 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         />
       </div>
 
+      {/* Bottom Controls */}
       <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-20">
-        <div className="flex items-center justify-center space-x-8">
+        <div className="flex items-center justify-center space-x-6">
           <ControlButton 
             icon={Download} 
             onClick={onDownload} 
-            label="Download"
+            label="Download Only"
             size="lg"
           />
-          <ControlButton 
-            icon={Send} 
-            onClick={onShare} 
-            label="Share"
-            size="lg"
-          />
+          
+          <button
+            onClick={onProcessAndShare}
+            className="flex items-center space-x-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded-full text-white font-medium transition-colors"
+          >
+            <Share2 className="w-5 h-5" />
+            <span>Process & Share</span>
+          </button>
+        </div>
+        
+        {/* Tip */}
+        <div className="text-center mt-3">
+          <p className="text-white/60 text-xs">
+            💡 Process & Share optimizes video for Instagram/TikTok
+          </p>
         </div>
       </div>
     </div>
