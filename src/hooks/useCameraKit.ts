@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Fixed with camera feed restoration
+// src/hooks/useCameraKit.ts - Fixed camera switching without re-initialization
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { CAMERA_KIT_CONFIG, validateConfig } from '../config/cameraKit';
@@ -51,6 +51,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const lensRepositoryRef = useRef<any>(null);
   const isAttachedRef = useRef<boolean>(false);
   const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
+  const isInitializedRef = useRef<boolean>(false);
 
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
@@ -98,12 +99,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
   }, [addLog]);
 
-  // FIXED: Camera feed restoration on app return
   const restoreCameraFeed = useCallback(() => {
     if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
       addLog('🔄 Restoring camera feed...');
       
-      // Check if canvas is still attached
       const isCanvasAttached = containerRef.current.current.contains(outputCanvasRef.current);
       
       if (!isCanvasAttached) {
@@ -111,7 +110,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         attachCameraOutput(outputCanvasRef.current, containerRef.current);
       }
       
-      // Resume session if paused
       if (sessionRef.current.output?.live) {
         try {
           sessionRef.current.play('live');
@@ -123,13 +121,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
   }, [addLog, attachCameraOutput]);
 
-  // FIXED: Page visibility handler for camera restoration
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         addLog('👁️ App became visible, checking camera feed...');
-        
-        // Delay to ensure DOM is ready
         setTimeout(() => {
           restoreCameraFeed();
         }, 100);
@@ -150,13 +145,39 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     containerReference: React.RefObject<HTMLDivElement>
   ): Promise<boolean> => {
     try {
+      // FIXED: Prevent re-initialization if already done
+      if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
+        addLog('📱 Camera Kit already initialized, updating stream only...');
+        
+        // Just update the stream source
+        const source = createMediaStreamSource(stream);
+        await sessionRef.current.setSource(source);
+        
+        if (currentFacingMode === 'user') {
+          source.setTransform(Transform2D.MirrorX);
+        }
+        
+        streamRef.current = stream;
+        containerRef.current = containerReference;
+        
+        // Re-attach canvas if needed
+        if (sessionRef.current.output?.live && containerReference.current && !isAttachedRef.current) {
+          setTimeout(() => {
+            if (sessionRef.current.output.live) {
+              attachCameraOutput(sessionRef.current.output.live, containerReference);
+            }
+          }, 100);
+        }
+        
+        addLog('✅ Stream updated without re-initialization');
+        return true;
+      }
+
       addLog('🎭 Initializing Camera Kit...');
       setCameraState('initializing');
-
-      // Store container reference for restoration
       containerRef.current = containerReference;
 
-      // Get or bootstrap Camera Kit
+      // Get or bootstrap Camera Kit (only once)
       let cameraKit = cameraKitInstance;
       if (!cameraKit) {
         addLog('Camera Kit not preloaded, bootstrapping now...');
@@ -173,11 +194,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         throw new Error('Failed to initialize Camera Kit instance');
       }
 
-      // Create session
+      // Create session (only first time)
       addLog('🎬 Creating Camera Kit session...');
       const session = await cameraKit.createSession();
       sessionRef.current = session;
       streamRef.current = stream;
+      isInitializedRef.current = true;
       
       session.events.addEventListener("error", (event: any) => {
         addLog(`❌ Session error: ${event.detail}`);
@@ -193,7 +215,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }
       addLog('✅ Camera source configured');
 
-      // Load lens
+      // Load lens (cache for reuse)
       if (!lensRepositoryRef.current) {
         try {
           const { lenses } = await cameraKit.lensRepository.loadLensGroups([
@@ -237,26 +259,25 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       setCameraState('error');
       return false;
     }
-  }, [currentFacingMode, addLog, attachCameraOutput]);
+  }, [currentFacingMode, addLog, attachCameraOutput, cameraState]);
 
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
-    if (!sessionRef.current || cameraState !== 'ready') {
-      addLog('❌ Cannot switch camera - session not ready');
+    // FIXED: Don't re-initialize, just update stream source
+    if (!sessionRef.current || !isInitializedRef.current) {
+      addLog('❌ Cannot switch camera - session not initialized');
       return null;
     }
 
     try {
-      setCameraState('initializing');
       const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      
-      addLog(`🔄 Switching to ${newFacingMode} camera`);
+      addLog(`🔄 Switching to ${newFacingMode} camera (reusing session)`);
 
-      sessionRef.current.pause();
-      
+      // Stop current stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
       
+      // Get new stream
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { 
           facingMode: newFacingMode,
@@ -268,6 +289,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       
       streamRef.current = newStream;
       
+      // FIXED: Update existing session source instead of creating new session
       const source = createMediaStreamSource(newStream);
       await sessionRef.current.setSource(source);
       
@@ -275,11 +297,13 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         source.setTransform(Transform2D.MirrorX);
       }
       
-      sessionRef.current.play('live');
-      setCurrentFacingMode(newFacingMode);
-      setCameraState('ready');
+      // Resume session if needed
+      if (sessionRef.current.output?.live) {
+        sessionRef.current.play('live');
+      }
       
-      addLog(`✅ Switched to ${newFacingMode} camera`);
+      setCurrentFacingMode(newFacingMode);
+      addLog(`✅ Switched to ${newFacingMode} camera (session reused)`);
       return newStream;
       
     } catch (error) {
@@ -287,7 +311,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       setCameraState('error');
       return null;
     }
-  }, [currentFacingMode, cameraState, addLog]);
+  }, [currentFacingMode, addLog]);
 
   const pauseSession = useCallback(() => {
     if (sessionRef.current) {
@@ -314,6 +338,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
     isAttachedRef.current = false;
     containerRef.current = null;
+    // Don't reset isInitializedRef - keep session for reuse
   }, [addLog]);
 
   const getCanvas = useCallback(() => {
@@ -334,7 +359,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     cleanup,
     getCanvas,
     getStream,
-    restoreCameraFeed, // NEW: Manual restore function
+    restoreCameraFeed,
     isReady: cameraState === 'ready',
     isInitializing: cameraState === 'initializing'
   };
