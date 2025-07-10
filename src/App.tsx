@@ -1,4 +1,4 @@
-// src/App.tsx - Fixed with complete camera restoration integration
+// src/App.tsx - Complete with reloadLens handler
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -28,6 +28,7 @@ const CameraApp: React.FC = () => {
     errorInfo,
     initializeCameraKit,
     switchCamera,
+    reloadLens,
     requestCameraStream,
     requestPermission,
     checkCameraPermission,
@@ -133,6 +134,26 @@ const CameraApp: React.FC = () => {
     toggleRecording(canvas, stream || undefined);
   }, [getCanvas, getStream, toggleRecording, addLog]);
 
+  const handleReloadEffect = useCallback(async () => {
+    if (!isReady) {
+      addLog('❌ Cannot reload - camera not ready');
+      return;
+    }
+    
+    try {
+      addLog('🔄 Reloading AR effect...');
+      const success = await reloadLens();
+      
+      if (success) {
+        addLog('✅ AR effect reloaded successfully');
+      } else {
+        addLog('❌ Failed to reload AR effect');
+      }
+    } catch (error) {
+      addLog(`❌ Reload error: ${error}`);
+    }
+  }, [isReady, reloadLens, addLog]);
+
   const handleClosePreview = useCallback(() => {
     setShowPreview(false);
     addLog('📱 Preview closed');
@@ -220,10 +241,7 @@ const CameraApp: React.FC = () => {
         recordingState={recordingState}
         recordingTime={recordingTime}
         onToggleRecording={handleToggleRecording}
-        onGallery={() => {
-          addLog('🔄 Reload effect');
-          setTimeout(() => restoreCameraFeed(), 100);
-        }}
+        onGallery={handleReloadEffect}
         onSwitchCamera={handleSwitchCamera}
         formatTime={formatTime}
         disabled={!isReady}

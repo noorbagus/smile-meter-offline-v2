@@ -1,4 +1,4 @@
-// src/context/CameraContext.tsx - Fixed interface
+// src/context/CameraContext.tsx - Add reloadLens to interface
 import React, { createContext, useContext, useRef } from 'react';
 import { useCameraKit, useCameraPermissions, useDebugLogger } from '../hooks';
 import type { CameraState, PermissionState, ErrorInfo } from '../hooks';
@@ -9,12 +9,13 @@ interface CameraContextValue {
   currentFacingMode: 'user' | 'environment';
   initializeCameraKit: (stream: MediaStream, containerRef: React.RefObject<HTMLDivElement>) => Promise<boolean>;
   switchCamera: () => Promise<MediaStream | null>;
+  reloadLens: () => Promise<boolean>; // NEW: Added this
   pauseSession: () => void;
   resumeSession: () => void;
   cleanup: () => void;
   getCanvas: () => HTMLCanvasElement | null;
   getStream: () => MediaStream | null;
-  restoreCameraFeed: () => void; // FIXED: Added this
+  restoreCameraFeed: () => void;
   isReady: boolean;
   isInitializing: boolean;
   
@@ -71,12 +72,13 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     currentFacingMode,
     initializeCameraKit,
     switchCamera,
+    reloadLens, // NEW: Get from hook
     pauseSession,
     resumeSession,
     cleanup,
     getCanvas,
     getStream,
-    restoreCameraFeed, // FIXED: Get from hook
+    restoreCameraFeed,
     isReady,
     isInitializing
   } = useCameraKit(addLog);
@@ -87,12 +89,13 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     currentFacingMode,
     initializeCameraKit,
     switchCamera,
+    reloadLens, // NEW: Added to value
     pauseSession,
     resumeSession,
     cleanup,
     getCanvas,
     getStream,
-    restoreCameraFeed, // FIXED: Added to value
+    restoreCameraFeed,
     isReady,
     isInitializing,
     

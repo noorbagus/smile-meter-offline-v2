@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Fixed with timeout protection and proper state management
+// src/hooks/useCameraKit.ts - Complete with reloadLens function
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { CAMERA_KIT_CONFIG, validateConfig } from '../config/cameraKit';
@@ -130,6 +130,54 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }
     }
   }, [addLog, attachCameraOutput]);
+
+  const reloadLens = useCallback(async (): Promise<boolean> => {
+    if (!sessionRef.current || !isInitializedRef.current) {
+      addLog('❌ Cannot reload lens - session not ready');
+      return false;
+    }
+
+    try {
+      addLog('🔄 Reloading AR lens...');
+      
+      // Pause session
+      sessionRef.current.pause();
+      
+      // Wait for pause
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Re-apply lens
+      const lenses = lensRepositoryRef.current;
+      if (lenses && lenses.length > 0) {
+        const targetLens = lenses.find((lens: any) => lens.id === CAMERA_KIT_CONFIG.lensId) || lenses[0];
+        await withTimeout(sessionRef.current.applyLens(targetLens), 3000);
+        addLog(`✅ Lens reloaded: ${targetLens.name}`);
+      }
+      
+      // Resume session
+      sessionRef.current.play('live');
+      
+      // Restore camera feed
+      setTimeout(() => {
+        restoreCameraFeed();
+      }, 300);
+      
+      addLog('🎉 AR lens refreshed successfully');
+      return true;
+      
+    } catch (error) {
+      addLog(`❌ Lens reload failed: ${error}`);
+      
+      // Recovery - resume session
+      try {
+        sessionRef.current.play('live');
+      } catch (recoveryError) {
+        addLog(`❌ Recovery failed: ${recoveryError}`);
+      }
+      
+      return false;
+    }
+  }, [addLog, restoreCameraFeed]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -397,6 +445,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     currentFacingMode,
     initializeCameraKit,
     switchCamera,
+    reloadLens,
     pauseSession,
     resumeSession,
     cleanup,
