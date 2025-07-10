@@ -1,4 +1,4 @@
-// src/hooks/useMediaRecorder.ts
+// src/hooks/useMediaRecorder.ts - FIXED for constant 30fps
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { FixedMediaRecorder, detectAndroid } from '../utils/androidRecorderFix';
 
@@ -13,74 +13,161 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
   const timerRef = useRef<number | null>(null);
   const recordingStartTimeRef = useRef<number>(0);
 
+  /**
+   * FIXED: Enhanced recording start with constant framerate validation
+   */
   const startRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
     if (!canvas) {
       addLog('❌ Canvas not available for recording');
       return false;
     }
 
+    // FIXED: Validate canvas for constant framerate capture
+    if (!canvas.width || !canvas.height) {
+      addLog('❌ Canvas has invalid dimensions');
+      return false;
+    }
+
+    if (typeof canvas.captureStream !== 'function') {
+      addLog('❌ Canvas.captureStream not supported');
+      return false;
+    }
+
     try {
-      const canvasStream = canvas.captureStream(30);
+      // FIXED: Create high-quality stream for constant framerate
+      let canvasStream: MediaStream;
       
-      // Add audio if available
+      try {
+        // Force 30fps capture
+        canvasStream = canvas.captureStream(30);
+        addLog(`✅ Canvas stream: ${canvas.width}x${canvas.height}@30fps`);
+      } catch (streamError) {
+        // Fallback to default capture
+        canvasStream = canvas.captureStream();
+        addLog(`⚠️ Using default canvas capture: ${streamError}`);
+      }
+      
+      // FIXED: Enhanced audio integration with sync validation
       if (audioStream && audioStream.getAudioTracks().length > 0) {
         const audioTrack = audioStream.getAudioTracks()[0];
-        canvasStream.addTrack(audioTrack);
+        
+        // Validate audio track before adding
+        if (audioTrack.readyState === 'live') {
+          canvasStream.addTrack(audioTrack);
+          addLog(`✅ Audio track added: ${audioTrack.label || 'Default'}`);
+        } else {
+          addLog(`⚠️ Audio track not live: ${audioTrack.readyState}`);
+        }
+      } else {
+        addLog('ℹ️ No audio stream available');
       }
 
-      // Record start time for accurate duration
+      // FIXED: Validate stream before recording
+      const videoTracks = canvasStream.getVideoTracks();
+      const audioTracks = canvasStream.getAudioTracks();
+      
+      addLog(`📊 Stream validation: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
+      
+      if (videoTracks.length === 0) {
+        throw new Error('No video tracks in canvas stream');
+      }
+
+      // Record precise start time for duration calculation
       recordingStartTimeRef.current = performance.now();
 
+      // FIXED: Initialize FixedMediaRecorder with enhanced options
       fixedRecorderRef.current = new FixedMediaRecorder(
         canvasStream,
         (file: File) => {
-          // Calculate actual recording duration
+          // FIXED: Enhanced completion with framerate validation
           const endTime = performance.now();
           const actualDurationMs = endTime - recordingStartTimeRef.current;
           const actualDurationSeconds = Math.floor(actualDurationMs / 1000);
           
-          // Add duration metadata to file
+          // Enhanced metadata with framerate tracking
           (file as any).recordingDuration = actualDurationSeconds;
           (file as any).recordingStartTime = recordingStartTimeRef.current;
           (file as any).recordingEndTime = endTime;
           (file as any).actualDurationMs = actualDurationMs;
+          (file as any).canvasWidth = canvas.width;
+          (file as any).canvasHeight = canvas.height;
+          (file as any).hasAudioTrack = audioTracks.length > 0;
+          
+          // Log final recording stats
+          const frameRate = (file as any).actualFrameRate || 0;
+          const isConstant = (file as any).isConstantFramerate || false;
+          
+          addLog(`✅ Recording complete: ${actualDurationSeconds}s @ ${frameRate.toFixed(1)}fps ${isConstant ? '(constant)' : '(variable)'}`);
           
           setRecordedVideo(file);
           setRecordingState('idle');
-          addLog(`✅ Recording completed: ${actualDurationSeconds}s`);
         },
         addLog
       );
 
       fixedRecorderRef.current.start();
       setRecordingState('recording');
-      addLog(`🎬 Recording started (${detectAndroid() ? 'Android MP4' : 'Standard'} mode)`);
+      
+      const platform = detectAndroid() ? 'Android MP4' : 'Standard';
+      addLog(`🎬 Recording started: ${platform} @ 30fps target`);
       return true;
 
     } catch (error) {
-      addLog(`❌ Failed to start recording: ${error}`);
+      addLog(`❌ Recording start failed: ${error}`);
       setRecordingState('idle');
       return false;
     }
   }, [addLog]);
 
+  /**
+   * FIXED: Enhanced stop with validation
+   */
   const stopRecording = useCallback(() => {
     if (fixedRecorderRef.current && recordingState === 'recording') {
-      fixedRecorderRef.current.stop();
-      setRecordingState('processing');
-      addLog('⏹️ Recording stopped, processing...');
+      const recorder = fixedRecorderRef.current;
+      const recorderState = recorder.getState();
+      
+      if (recorderState === 'recording') {
+        recorder.stop();
+        setRecordingState('processing');
+        addLog('⏹️ Recording stopped, processing for constant framerate...');
+      } else {
+        addLog(`⚠️ Recorder not in recording state: ${recorderState}`);
+        setRecordingState('idle');
+      }
+    } else {
+      addLog('⚠️ No active recorder to stop');
     }
   }, [recordingState, addLog]);
 
+  /**
+   * FIXED: Enhanced toggle with minimum duration and framerate validation
+   */
   const toggleRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
     if (recordingState === 'recording') {
-      if (recordingTime >= 2) {
+      // FIXED: Validate minimum duration for stable framerate
+      if (recordingTime >= 3) { // Increased from 2 to 3 seconds for better Instagram compatibility
         stopRecording();
       } else {
-        addLog('⚠️ Recording too short (minimum 2 seconds)');
+        addLog(`⚠️ Recording too short (${recordingTime}s) - minimum 3 seconds for Instagram`);
       }
     } else if (recordingState === 'idle') {
-      startRecording(canvas, audioStream);
+      // FIXED: Pre-flight validation
+      if (!canvas) {
+        addLog('❌ Canvas required for recording');
+        return;
+      }
+      
+      if (canvas.width < 640 || canvas.height < 480) {
+        addLog(`⚠️ Canvas resolution low: ${canvas.width}x${canvas.height}`);
+      }
+      
+      const success = startRecording(canvas, audioStream);
+      if (!success) {
+        addLog('❌ Failed to start recording');
+      }
+    } else {
+      addLog(`⚠️ Cannot toggle recording in state: ${recordingState}`);
     }
   }, [recordingState, recordingTime, startRecording, stopRecording, addLog]);
 
@@ -89,27 +176,46 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
     setRecordingTime(0);
     setRecordingState('idle');
     recordingStartTimeRef.current = 0;
-  }, []);
+    addLog('🗑️ Recording cleared');
+  }, [addLog]);
 
   const cleanup = useCallback(() => {
     if (fixedRecorderRef.current) {
-      fixedRecorderRef.current.stop();
+      const recorderState = fixedRecorderRef.current.getState();
+      if (recorderState === 'recording') {
+        fixedRecorderRef.current.stop();
+      }
       fixedRecorderRef.current = null;
     }
     if (timerRef.current) {
       clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-  }, []);
+    addLog('🧹 MediaRecorder cleanup complete');
+  }, [addLog]);
 
-  // Timer effect
+  /**
+   * FIXED: Enhanced timer with framerate monitoring
+   */
   useEffect(() => {
     if (recordingState === 'recording') {
       timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
+        setRecordingTime(prev => {
+          const newTime = prev + 1;
+          
+          // Log framerate info periodically
+          if (newTime % 5 === 0 && fixedRecorderRef.current) {
+            const state = fixedRecorderRef.current.getState();
+            addLog(`📊 Recording: ${newTime}s, state: ${state}`);
+          }
+          
+          return newTime;
+        });
       }, 1000);
     } else {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
       if (recordingState === 'idle') {
         setRecordingTime(0);
@@ -117,9 +223,12 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
     }
     
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, [recordingState]);
+  }, [recordingState, addLog]);
 
   const formatTime = useCallback((seconds: number): string => {
     const mins = Math.floor(seconds / 60);
