@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Fixed camera switching without re-initialization
+// src/hooks/useCameraKit.ts - Fixed with timeout protection and proper state management
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { CAMERA_KIT_CONFIG, validateConfig } from '../config/cameraKit';
@@ -7,6 +7,16 @@ import type { CameraState } from './useCameraPermissions';
 // Singleton instance
 let cameraKitInstance: any = null;
 let preloadPromise: Promise<any> | null = null;
+
+// Timeout wrapper to prevent hanging operations
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error(`Operation timeout after ${ms}ms`)), ms)
+    )
+  ]);
+};
 
 const preloadCameraKit = async () => {
   if (cameraKitInstance) return cameraKitInstance;
@@ -145,13 +155,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     containerReference: React.RefObject<HTMLDivElement>
   ): Promise<boolean> => {
     try {
-      // FIXED: Prevent re-initialization if already done
+      // Prevent re-initialization if already done
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Camera Kit already initialized, updating stream only...');
         
-        // Just update the stream source
         const source = createMediaStreamSource(stream);
-        await sessionRef.current.setSource(source);
+        await withTimeout(sessionRef.current.setSource(source), 3000);
         
         if (currentFacingMode === 'user') {
           source.setTransform(Transform2D.MirrorX);
@@ -160,7 +169,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         streamRef.current = stream;
         containerRef.current = containerReference;
         
-        // Re-attach canvas if needed
         if (sessionRef.current.output?.live && containerReference.current && !isAttachedRef.current) {
           setTimeout(() => {
             if (sessionRef.current.output.live) {
@@ -177,12 +185,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       setCameraState('initializing');
       containerRef.current = containerReference;
 
-      // Get or bootstrap Camera Kit (only once)
+      // Get or bootstrap Camera Kit
       let cameraKit = cameraKitInstance;
       if (!cameraKit) {
         addLog('Camera Kit not preloaded, bootstrapping now...');
         try {
-          cameraKit = await preloadCameraKit();
+          cameraKit = await withTimeout(preloadCameraKit(), 10000);
         } catch (ckError: any) {
           addLog(`❌ Camera Kit bootstrap failed: ${ckError.message}`);
           setCameraState('error');
@@ -194,9 +202,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         throw new Error('Failed to initialize Camera Kit instance');
       }
 
-      // Create session (only first time)
       addLog('🎬 Creating Camera Kit session...');
-      const session = await cameraKit.createSession();
+      const session: any = await withTimeout(cameraKit.createSession(), 5000);
       sessionRef.current = session;
       streamRef.current = stream;
       isInitializedRef.current = true;
@@ -206,22 +213,21 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
-      // Configure camera source
       const source = createMediaStreamSource(stream);
-      await session.setSource(source);
+      await withTimeout(session.setSource(source), 3000);
       
       if (currentFacingMode === 'user') {
         source.setTransform(Transform2D.MirrorX);
       }
       addLog('✅ Camera source configured');
 
-      // Load lens (cache for reuse)
       if (!lensRepositoryRef.current) {
         try {
-          const { lenses } = await cameraKit.lensRepository.loadLensGroups([
-            CAMERA_KIT_CONFIG.lensGroupId
-          ]);
-          lensRepositoryRef.current = lenses;
+          const lensResult: any = await withTimeout(
+            cameraKit.lensRepository.loadLensGroups([CAMERA_KIT_CONFIG.lensGroupId]), 
+            5000
+          );
+          lensRepositoryRef.current = lensResult.lenses;
           addLog('✅ Lens repository cached');
         } catch (lensError) {
           addLog(`⚠️ Lens loading failed: ${lensError}`);
@@ -232,17 +238,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       if (lenses && lenses.length > 0) {
         try {
           const targetLens = lenses.find((lens: any) => lens.id === CAMERA_KIT_CONFIG.lensId) || lenses[0];
-          await session.applyLens(targetLens);
+          await withTimeout(session.applyLens(targetLens), 3000);
           addLog(`✅ Lens applied: ${targetLens.name}`);
         } catch (lensApplyError) {
           addLog(`⚠️ Lens application failed: ${lensApplyError}`);
         }
       }
 
-      // Start session
       session.play('live');
 
-      // Attach to DOM with delay
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
           attachCameraOutput(session.output.live, containerReference);
@@ -262,7 +266,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   }, [currentFacingMode, addLog, attachCameraOutput, cameraState]);
 
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
-    // FIXED: Don't re-initialize, just update stream source
     if (!sessionRef.current || !isInitializedRef.current) {
       addLog('❌ Cannot switch camera - session not initialized');
       return null;
@@ -270,45 +273,86 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
     try {
       const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      addLog(`🔄 Switching to ${newFacingMode} camera (reusing session)`);
+      addLog(`🔄 Switching to ${newFacingMode} camera with timeout protection...`);
 
-      // Stop current stream
+      // Step 1: Pause session
+      if (sessionRef.current.output?.live) {
+        sessionRef.current.pause();
+        addLog('⏸️ Session paused for switch');
+      }
+
+      // Step 2: Stop current stream
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+          addLog(`🛑 Stopped ${track.kind} track`);
+        });
+        streamRef.current = null;
       }
-      
-      // Get new stream
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: newFacingMode,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 }
-        },
-        audio: true
-      });
-      
+
+      // Step 3: Wait for cleanup
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Step 4: Get new stream with timeout
+      addLog(`📹 Requesting ${newFacingMode} camera...`);
+      const newStream = await withTimeout(
+        navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: newFacingMode,
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 }
+          },
+          audio: true
+        }),
+        5000
+      );
+
+      addLog(`✅ New ${newFacingMode} stream obtained`);
       streamRef.current = newStream;
-      
-      // FIXED: Update existing session source instead of creating new session
+
+      // Step 5: Set source with timeout
       const source = createMediaStreamSource(newStream);
-      await sessionRef.current.setSource(source);
-      
+      await withTimeout(sessionRef.current.setSource(source), 3000);
+      addLog('✅ Source set successfully');
+
+      // Step 6: Apply transform if needed
       if (newFacingMode === 'user') {
-        source.setTransform(Transform2D.MirrorX);
+        try {
+          source.setTransform(Transform2D.MirrorX);
+          addLog('🪞 Mirror transform applied');
+        } catch (transformError) {
+          addLog(`⚠️ Transform failed: ${transformError}`);
+        }
       }
-      
-      // Resume session if needed
+
+      // Step 7: Wait before resuming
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Step 8: Resume session
       if (sessionRef.current.output?.live) {
         sessionRef.current.play('live');
+        addLog('▶️ Session resumed');
       }
-      
+
+      // Step 9: Update state
       setCurrentFacingMode(newFacingMode);
-      addLog(`✅ Switched to ${newFacingMode} camera (session reused)`);
+      addLog(`🎉 Camera switched to ${newFacingMode} successfully`);
       return newStream;
       
-    } catch (error) {
-      addLog(`❌ Camera switch failed: ${error}`);
-      setCameraState('error');
+    } catch (error: any) {
+      addLog(`❌ Camera switch failed: ${error.message}`);
+      
+      // Recovery: Try to restore previous state
+      try {
+        if (sessionRef.current.output?.live) {
+          sessionRef.current.play('live');
+        }
+        addLog('🔄 Restored previous camera state');
+      } catch (recoveryError) {
+        addLog(`❌ Recovery failed: ${recoveryError}`);
+        setCameraState('error');
+      }
+      
       return null;
     }
   }, [currentFacingMode, addLog]);
@@ -338,7 +382,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
     isAttachedRef.current = false;
     containerRef.current = null;
-    // Don't reset isInitializedRef - keep session for reuse
   }, [addLog]);
 
   const getCanvas = useCallback(() => {

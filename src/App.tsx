@@ -1,4 +1,4 @@
-// src/App.tsx - Full fixed version
+// src/App.tsx - Fixed with complete camera restoration integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -55,28 +55,22 @@ const CameraApp: React.FC = () => {
     processingMessage,
     processingError,
     showRenderingModal,
-    setShowRenderingModal,
-    autoShareEnabled,
-    setAutoShareEnabled
+    setShowRenderingModal
   } = useRecordingContext();
 
-  // Auto-recovery on app focus
+  // Auto-recovery on app focus/visibility
   useEffect(() => {
     const handleFocus = () => {
       if (cameraState === 'ready') {
         addLog('🔄 App focused - checking camera feed...');
-        setTimeout(() => {
-          restoreCameraFeed();
-        }, 200);
+        setTimeout(() => restoreCameraFeed(), 200);
       }
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && cameraState === 'ready') {
         addLog('👁️ App visible - restoring camera...');
-        setTimeout(() => {
-          restoreCameraFeed();
-        }, 100);
+        setTimeout(() => restoreCameraFeed(), 100);
       }
     };
 
@@ -91,7 +85,7 @@ const CameraApp: React.FC = () => {
 
   const initializeApp = useCallback(async () => {
     if (cameraState === 'ready') {
-      addLog('📱 Camera already ready, skipping initialization');
+      addLog('📱 Camera already ready');
       return;
     }
 
@@ -109,7 +103,7 @@ const CameraApp: React.FC = () => {
         addLog('🎉 App initialization complete');
       }
     } catch (error) {
-      addLog(`❌ App initialization failed: ${error}`);
+      addLog(`❌ Initialization failed: ${error}`);
     }
   }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef]);
 
@@ -132,7 +126,7 @@ const CameraApp: React.FC = () => {
     const stream = getStream();
     
     if (!canvas) {
-      addLog('❌ Canvas not available for recording');
+      addLog('❌ Canvas not available');
       return;
     }
 
@@ -142,44 +136,53 @@ const CameraApp: React.FC = () => {
   const handleClosePreview = useCallback(() => {
     setShowPreview(false);
     addLog('📱 Preview closed');
-  }, [setShowPreview, addLog]);
+    setTimeout(() => restoreCameraFeed(), 100);
+  }, [setShowPreview, addLog, restoreCameraFeed]);
 
   const handleProcessAndShare = useCallback(() => {
     addLog('🎬 Starting video processing...');
     processAndShareVideo();
   }, [processAndShareVideo, addLog]);
 
+  const handleDownload = useCallback(() => {
+    downloadVideo();
+    setTimeout(() => {
+      setShowPreview(false);
+      restoreCameraFeed();
+    }, 500);
+  }, [downloadVideo, setShowPreview, restoreCameraFeed]);
+
   useEffect(() => {
-    addLog('🚀 App component mounted');
+    addLog('🚀 App mounted');
     initializeApp();
   }, [initializeApp, addLog]);
 
   const handleRequestPermission = useCallback(async () => {
     try {
-      addLog('🔒 Requesting camera permission...');
+      addLog('🔒 Requesting permission...');
       const stream = await requestPermission();
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
         initializeApp();
       }
     } catch (error) {
-      addLog(`❌ Permission request failed: ${error}`);
+      addLog(`❌ Permission failed: ${error}`);
     }
   }, [requestPermission, initializeApp, addLog]);
 
   const handleRetry = useCallback(() => {
-    addLog('🔄 Retrying initialization...');
+    addLog('🔄 Retrying...');
     initializeApp();
   }, [initializeApp, addLog]);
 
-  // Video preview with auto-share option
+  // Video preview
   if (showPreview && recordedVideo) {
     return (
       <>
         <VideoPreview
           recordedVideo={recordedVideo}
           onClose={handleClosePreview}
-          onDownload={downloadVideo}
+          onDownload={handleDownload}
           onProcessAndShare={handleProcessAndShare}
         />
         
@@ -192,6 +195,7 @@ const CameraApp: React.FC = () => {
           onCancel={() => {
             setShowRenderingModal(false);
             addLog('❌ Processing cancelled');
+            setTimeout(() => restoreCameraFeed(), 100);
           }}
         />
       </>
@@ -216,7 +220,10 @@ const CameraApp: React.FC = () => {
         recordingState={recordingState}
         recordingTime={recordingTime}
         onToggleRecording={handleToggleRecording}
-        onGallery={() => addLog('🔄 Reload effect clicked')}
+        onGallery={() => {
+          addLog('🔄 Reload effect');
+          setTimeout(() => restoreCameraFeed(), 100);
+        }}
         onSwitchCamera={handleSwitchCamera}
         formatTime={formatTime}
         disabled={!isReady}
@@ -259,6 +266,7 @@ const CameraApp: React.FC = () => {
         onCancel={() => {
           setShowRenderingModal(false);
           addLog('❌ Processing cancelled');
+          setTimeout(() => restoreCameraFeed(), 100);
         }}
       />
     </div>
@@ -276,10 +284,10 @@ const App: React.FC = () => {
 };
 
 const AppWithContext: React.FC = () => {
-  const { addLog } = useCameraContext();
+  const { addLog, restoreCameraFeed } = useCameraContext();
   
   return (
-    <RecordingProvider addLog={addLog}>
+    <RecordingProvider addLog={addLog} restoreCameraFeed={restoreCameraFeed}>
       <CameraApp />
     </RecordingProvider>
   );

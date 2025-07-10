@@ -1,11 +1,10 @@
-// src/context/RecordingContext.tsx - Skip modal, direct share
+// src/context/RecordingContext.tsx - Fixed camera restoration after share
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useMediaRecorder } from '../hooks';
 import { VideoProcessor, ProcessingProgress } from '../utils/VideoProcessor';
 import type { RecordingState } from '../hooks';
 
 interface RecordingContextValue {
-  // Recording State
   recordingState: RecordingState;
   recordingTime: number;
   recordedVideo: Blob | File | null;
@@ -13,7 +12,6 @@ interface RecordingContextValue {
   isProcessing: boolean;
   isIdle: boolean;
   
-  // Recording Controls
   startRecording: (canvas: HTMLCanvasElement, audioStream?: MediaStream) => boolean;
   stopRecording: () => void;
   toggleRecording: (canvas: HTMLCanvasElement, audioStream?: MediaStream) => void;
@@ -21,11 +19,9 @@ interface RecordingContextValue {
   cleanup: () => void;
   formatTime: (seconds: number) => string;
   
-  // FIXED: Direct share without modal
   processAndShareVideo: () => Promise<void>;
   downloadVideo: () => void;
   
-  // Processing State (minimal for background processing)
   isVideoProcessing: boolean;
   processingProgress: number;
   processingMessage: string;
@@ -33,15 +29,12 @@ interface RecordingContextValue {
   showRenderingModal: boolean;
   setShowRenderingModal: (show: boolean) => void;
   
-  // Preview State
   showPreview: boolean;
   setShowPreview: (show: boolean) => void;
   
-  // Share Options
-  autoShareEnabled: boolean; // NEW
-  setAutoShareEnabled: (enabled: boolean) => void; // NEW
+  autoShareEnabled: boolean;
+  setAutoShareEnabled: (enabled: boolean) => void;
   
-  // Legacy
   showShareModal: boolean;
   setShowShareModal: (show: boolean) => void;
 }
@@ -59,17 +52,18 @@ export const useRecordingContext = () => {
 interface RecordingProviderProps {
   children: React.ReactNode;
   addLog: (message: string) => void;
+  restoreCameraFeed?: () => void;
 }
 
 export const RecordingProvider: React.FC<RecordingProviderProps> = ({ 
   children, 
-  addLog 
+  addLog,
+  restoreCameraFeed 
 }) => {
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [showShareModal, setShowShareModal] = useState<boolean>(false);
-  const [autoShareEnabled, setAutoShareEnabled] = useState<boolean>(false); // NEW: Default auto-share
+  const [autoShareEnabled, setAutoShareEnabled] = useState<boolean>(false);
   
-  // Minimal processing state (background only)
   const [isVideoProcessing, setIsVideoProcessing] = useState<boolean>(false);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [processingMessage, setProcessingMessage] = useState<string>('');
@@ -85,7 +79,7 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     startRecording,
     stopRecording,
     toggleRecording,
-    clearRecording,
+    clearRecording: originalClearRecording,
     cleanup,
     formatTime,
     isRecording,
@@ -93,7 +87,7 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     isIdle
   } = useMediaRecorder(addLog);
 
-  // FIXED: Auto-share when recording completes (no preview)
+  // Auto-share when recording completes
   useEffect(() => {
     if (recordedVideo && recordingState === 'idle' && autoShareEnabled) {
       addLog('🚀 Auto-sharing video...');
@@ -104,7 +98,18 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     }
   }, [recordedVideo, recordingState, autoShareEnabled, addLog]);
 
-  // FIXED: Direct share without modal
+  // Enhanced clear recording with camera restoration
+  const clearRecording = React.useCallback(() => {
+    originalClearRecording();
+    
+    if (restoreCameraFeed) {
+      addLog('🔄 Restoring camera feed after clear...');
+      setTimeout(() => {
+        restoreCameraFeed();
+      }, 200);
+    }
+  }, [originalClearRecording, restoreCameraFeed, addLog]);
+
   const processAndShareVideo = async () => {
     if (!recordedVideo) {
       addLog('❌ No video to process');
@@ -120,9 +125,8 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
                                recordingTime || 
                                5;
       
-      addLog(`🎬 Processing ${recordingDuration}s video for direct share...`);
+      addLog(`🎬 Processing ${recordingDuration}s video for share...`);
       
-      // Background processing (no modal)
       const processedFile = await videoProcessor.processVideo(
         recordedVideo,
         recordingDuration,
@@ -133,17 +137,16 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
         }
       );
       
-      // FIXED: Immediate native share attempt
       addLog('📱 Attempting native share...');
       const shareSuccess = await videoProcessor.shareVideo(processedFile);
       
       if (shareSuccess) {
-        addLog('✅ Video shared successfully via native share');
+        addLog('✅ Video shared successfully');
       } else {
-        addLog('📥 Fallback: Video downloaded with share instructions');
+        addLog('📥 Video downloaded with share instructions');
       }
       
-      // Reset state after share
+      // Reset state after share with camera restoration
       setTimeout(() => {
         setShowPreview(false);
         clearRecording();
@@ -152,10 +155,7 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     } catch (error) {
       addLog(`❌ Processing failed: ${error}`);
       setProcessingError(error instanceof Error ? error.message : 'Processing failed');
-      
-      // Fallback to direct download
       downloadVideo();
-      
     } finally {
       setIsVideoProcessing(false);
     }
@@ -173,10 +173,17 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     addLog('💾 Video downloaded');
+    
+    // Restore camera after download
+    setTimeout(() => {
+      if (restoreCameraFeed) {
+        addLog('🔄 Restoring camera feed after download...');
+        restoreCameraFeed();
+      }
+    }, 500);
   };
 
   const value: RecordingContextValue = {
-    // Recording State
     recordingState,
     recordingTime,
     recordedVideo,
@@ -184,7 +191,6 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     isProcessing,
     isIdle,
     
-    // Recording Controls
     startRecording,
     stopRecording,
     toggleRecording,
@@ -192,11 +198,9 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     cleanup,
     formatTime,
     
-    // Video Processing & Sharing
     processAndShareVideo,
     downloadVideo,
     
-    // Processing State
     isVideoProcessing,
     processingProgress,
     processingMessage,
@@ -204,15 +208,12 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     showRenderingModal,
     setShowRenderingModal,
     
-    // Preview State
     showPreview,
     setShowPreview,
     
-    // Share Options
     autoShareEnabled,
     setAutoShareEnabled,
     
-    // Legacy
     showShareModal,
     setShowShareModal
   };
