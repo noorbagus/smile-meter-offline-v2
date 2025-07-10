@@ -211,7 +211,7 @@ const CameraApp: React.FC = () => {
         recordingState={recordingState}
         recordingTime={recordingTime}
         onToggleRecording={handleToggleRecording}
-        onGallery={() => addLog('📱 Gallery clicked')}
+        onGallery={() => addLog('🔄 Reload effect clicked')}
         onSwitchCamera={handleSwitchCamera}
         formatTime={formatTime}
         disabled={!isReady}

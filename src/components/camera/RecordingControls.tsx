@@ -1,6 +1,6 @@
 // src/components/camera/RecordingControls.tsx
 import React from 'react';
-import { SwitchCamera, RotateCcw } from 'lucide-react';
+import { SwitchCamera, RefreshCw } from 'lucide-react';
 import { ControlButton, RecordButton } from '../ui';
 import type { RecordingState } from '../../hooks';
 
@@ -31,7 +31,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
           onClick={onSwitchCamera}
           label="Switch Camera"
           size="lg"
-          disabled={disabled}
+          disabled={false}
         />
         
         <RecordButton
@@ -43,9 +43,9 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
         />
         
         <ControlButton 
-          icon={RotateCcw} 
+          icon={RefreshCw} 
           onClick={onGallery}
-          label="Mirror"
+          label="Reload Effect"
           size="lg"
           disabled={disabled}
         />
