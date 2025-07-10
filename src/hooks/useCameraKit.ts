@@ -138,20 +138,29 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
 
     try {
-      addLog('🔄 Reloading AR lens...');
+      addLog('🔄 Hard restarting AR lens...');
       
       // Pause session
       sessionRef.current.pause();
-      
-      // Wait for pause
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Re-apply lens
+      // Remove current lens
+      try {
+        await withTimeout(sessionRef.current.removeLens(), 2000);
+        addLog('🗑️ Current lens removed');
+      } catch (removeError) {
+        addLog(`⚠️ Lens removal failed, continuing anyway: ${removeError}`);
+      }
+      
+      // Wait for removal
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Re-apply lens from scratch
       const lenses = lensRepositoryRef.current;
       if (lenses && lenses.length > 0) {
         const targetLens = lenses.find((lens: any) => lens.id === CAMERA_KIT_CONFIG.lensId) || lenses[0];
         await withTimeout(sessionRef.current.applyLens(targetLens), 3000);
-        addLog(`✅ Lens reloaded: ${targetLens.name}`);
+        addLog(`✅ Lens restarted from beginning: ${targetLens.name}`);
       }
       
       // Resume session
@@ -162,13 +171,13 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         restoreCameraFeed();
       }, 300);
       
-      addLog('🎉 AR lens refreshed successfully');
+      addLog('🎉 AR lens hard restarted successfully');
       return true;
       
     } catch (error) {
-      addLog(`❌ Lens reload failed: ${error}`);
+      addLog(`❌ Lens restart failed: ${error}`);
       
-      // Recovery - resume session
+      // Recovery
       try {
         sessionRef.current.play('live');
       } catch (recoveryError) {
