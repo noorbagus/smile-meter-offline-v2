@@ -126,8 +126,8 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
         }
       );
       
-      // Try to share processed video
-      addLog('📱 Attempting to share processed video...');
+      // Try to share processed video immediately
+      addLog('📱 Auto-sharing processed video...');
       const shareSuccess = await videoProcessor.shareVideo(processedFile);
       
       if (!shareSuccess) {
@@ -135,11 +135,11 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
         showShareInstructions(processedFile);
       }
       
-      // Close modal after short delay
+      // Close modal and preview after auto-share attempt
       setTimeout(() => {
         setShowRenderingModal(false);
         setShowPreview(false);
-      }, 1500);
+      }, shareSuccess ? 1000 : 1500);
       
     } catch (error) {
       addLog(`❌ Processing failed: ${error}`);

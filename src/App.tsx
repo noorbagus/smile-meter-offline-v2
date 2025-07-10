@@ -179,19 +179,7 @@ const CameraApp: React.FC = () => {
           onProcessAndShare={handleProcessAndShare}
         />
         
-        {/* Legacy ShareModal (optional) */}
-        {showShareModal && (
-          <ShareModal
-            recordedVideo={recordedVideo}
-            isOpen={showShareModal}
-            onClose={() => setShowShareModal(false)}
-            onDownload={downloadVideo}
-            onProcessAndShare={handleProcessAndShare}
-            addLog={addLog}
-          />
-        )}
-        
-        {/* New RenderingModal */}
+        {/* RenderingModal */}
         <RenderingModal
           isOpen={showRenderingModal}
           progress={processingProgress}

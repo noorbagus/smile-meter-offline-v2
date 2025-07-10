@@ -83,13 +83,12 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
             size="lg"
           />
           
-          <button
-            onClick={onProcessAndShare}
-            className="flex items-center space-x-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded-full text-white font-medium transition-colors"
-          >
-            <Share2 className="w-5 h-5" />
-            <span>Process & Share</span>
-          </button>
+          <ControlButton 
+            icon={Share2} 
+            onClick={onProcessAndShare} 
+            label="Share"
+            size="lg"
+          />
         </div>
         
         {/* Tip */}
