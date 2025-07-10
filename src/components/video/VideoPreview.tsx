@@ -1,6 +1,6 @@
-// src/components/video/VideoPreview.tsx - Direct share button
+// src/components/video/VideoPreview.tsx - Share & Download buttons
 import React from 'react';
-import { X, Download, Share2, Zap } from 'lucide-react';
+import { X, Download, Send } from 'lucide-react';
 import { ControlButton } from '../ui';
 import { checkSocialMediaCompatibility } from '../../utils/androidRecorderFix';
 
@@ -23,10 +23,9 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   const compatibility = checkSocialMediaCompatibility(recordedVideo as File);
   const platform = isAndroidRecording ? 'Android' : isiOSRecording ? 'iPhone' : 'Desktop';
 
-  // FIXED: Direct share handler
-  const handleDirectShare = () => {
+  const handleShare = () => {
     onProcessAndShare();
-    onClose(); // Close preview immediately
+    onClose();
   };
 
   return (
@@ -84,39 +83,27 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         />
       </div>
 
-      {/* Bottom Controls - FIXED: Direct share emphasis */}
+      {/* Bottom Controls - Two buttons centered */}
       <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-20">
-        <div className="flex items-center justify-center space-x-4">
+        <div className="flex items-center justify-center space-x-6">
+          <ControlButton 
+            icon={Send} 
+            onClick={handleShare} 
+            label="Share"
+            size="lg"
+          />
+          
           <ControlButton 
             icon={Download} 
             onClick={onDownload} 
-            label="Download Only"
-            size="md"
-          />
-          
-          {/* FIXED: Primary share button with emphasis */}
-          <button
-            onClick={handleDirectShare}
-            className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-full text-white font-medium transition-all duration-200 active:scale-95"
-          >
-            <Zap className="w-5 h-5" />
-            <span>Share Now</span>
-          </button>
-          
-          <ControlButton 
-            icon={Share2} 
-            onClick={onProcessAndShare} 
-            label="Process & Share"
-            size="md"
+            label="Download"
+            size="lg"
           />
         </div>
         
-        {/* FIXED: Updated tip for direct share */}
+        {/* Info */}
         <div className="text-center mt-3">
           <p className="text-white/60 text-xs">
-            💡 <strong>Share Now</strong> for instant sharing • <strong>Process & Share</strong> for optimized metadata
-          </p>
-          <p className="text-white/40 text-xs mt-1">
             {platform} MP4 • {duration}s • Instagram Ready
           </p>
         </div>
