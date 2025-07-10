@@ -1,6 +1,7 @@
-// src/utils/VideoProcessor.ts - FIXED for constant framerate validation
+// src/utils/VideoProcessor.ts
 import fixWebmDuration from 'fix-webm-duration';
 import { detectAndroid } from './androidRecorderFix';
+import * as MP4Box from 'mp4box';
 
 export interface ProcessingProgress {
   percent: number;
@@ -16,20 +17,13 @@ export interface ProcessedVideoMetadata {
   originalSize: number;
   processedSize: number;
   format: 'mp4' | 'webm';
-  // FIXED: Enhanced framerate metadata
-  targetFrameRate: number;
-  actualFrameRate: number;
-  isConstantFramerate: boolean;
-  frameRateVariance: number;
-  totalFrames: number;
-  qualityScore: number;
 }
 
 export class VideoProcessor {
   constructor(private addLog: (message: string) => void) {}
 
   /**
-   * FIXED: Enhanced processing with framerate validation and optimization
+   * Process video for social media sharing with metadata fixes
    */
   async processVideo(
     rawBlob: Blob,
@@ -41,88 +35,56 @@ export class VideoProcessor {
       const isMP4 = rawBlob.type.includes('mp4');
       const originalSize = rawBlob.size;
 
-      // FIXED: Extract framerate metadata if available
-      const targetFrameRate = (rawBlob as any).targetFrameRate || 30;
-      const actualFrameRate = (rawBlob as any).actualFrameRate || targetFrameRate;
-      const isConstantFramerate = (rawBlob as any).isConstantFramerate || false;
-      const totalFrames = (rawBlob as any).totalFrames || (recordingDuration * targetFrameRate);
-
-      this.addLog(`🎬 Processing: ${recordingDuration}s, ${actualFrameRate.toFixed(1)}fps ${isConstantFramerate ? '(constant)' : '(variable)'}`);
+      this.addLog(`🎬 Starting video processing: ${recordingDuration}s, ${isMP4 ? 'MP4' : 'WebM'}`);
 
       // Step 1: Initialize (10%)
-      onProgress({ percent: 10, message: "Analyzing video stream..." });
+      onProgress({ percent: 10, message: "Memulai proses..." });
       await this.delay(150);
 
-      // Step 2: FIXED - Framerate analysis (25%)
-      onProgress({ percent: 25, message: "Validating framerate consistency..." });
-      
-      const frameRateVariance = Math.abs(actualFrameRate - targetFrameRate);
-      const qualityScore = this.calculateQualityScore(
-        recordingDuration,
-        actualFrameRate,
-        isConstantFramerate,
-        originalSize,
-        isMP4
-      );
-
-      this.addLog(`📊 Quality Score: ${qualityScore}/100, Variance: ${frameRateVariance.toFixed(1)}fps`);
+      // Step 2: Analyze format (25%)
+      onProgress({ percent: 25, message: "Menganalisis format video..." });
+      this.addLog(`📊 Format: ${isMP4 ? 'MP4' : 'WebM'}, Platform: ${isAndroid ? 'Android' : 'Standard'}`);
       await this.delay(200);
 
       let processedBlob = rawBlob;
 
-      // Step 3: FIXED - Enhanced duration and framerate metadata fixing (60%)
-      onProgress({ percent: 40, message: "Optimizing framerate metadata..." });
+      // Step 3: Fix duration metadata (60%)
+      onProgress({ percent: 40, message: "Memperbaiki metadata durasi..." });
 
       if (!isMP4) {
-        // FIXED: WebM with enhanced framerate metadata
+        // Fix WebM duration
         try {
           const durationMs = recordingDuration * 1000;
           processedBlob = await fixWebmDuration(rawBlob, durationMs);
-          
-          // Add framerate information to blob metadata
-          (processedBlob as any).enhancedMetadata = {
-            targetFrameRate,
-            actualFrameRate,
-            isConstantFramerate,
-            frameRateVariance,
-            qualityScore
-          };
-          
-          this.addLog('✅ WebM metadata enhanced with framerate info');
+          this.addLog('✅ WebM duration metadata fixed');
         } catch (error) {
-          this.addLog(`⚠️ WebM enhancement failed: ${error}`);
+          this.addLog(`⚠️ WebM fix failed: ${error}`);
         }
       } else {
-        // FIXED: MP4 framerate validation and optimization
-        await this.delay(300);
-        
-        if (isConstantFramerate && frameRateVariance < 1.0) {
-          this.addLog('✅ MP4 framerate validated - Instagram ready');
-        } else {
-          this.addLog(`⚠️ MP4 framerate variance: ${frameRateVariance.toFixed(1)}fps - may affect Instagram`);
+        // Fix MP4 duration with mp4box
+        try {
+          processedBlob = await this.fixMP4Duration(rawBlob, recordingDuration);
+          this.addLog('✅ MP4 duration metadata fixed');
+        } catch (error) {
+          this.addLog(`⚠️ MP4 fix failed: ${error}`);
         }
       }
 
-      onProgress({ percent: 60, message: "Framerate metadata optimized" });
+      onProgress({ percent: 60, message: "Metadata durasi diperbaiki" });
       await this.delay(200);
 
-      // Step 4: FIXED - Enhanced social media compatibility check (80%)
-      onProgress({ percent: 75, message: "Validating Instagram compatibility..." });
+      // Step 4: Social media optimization (80%)
+      onProgress({ percent: 75, message: "Mengoptimalkan untuk Instagram..." });
       
-      const compatibility = this.checkEnhancedSocialMediaCompatibility(
-        processedBlob, 
-        recordingDuration,
-        actualFrameRate,
-        isConstantFramerate
-      );
+      const compatibility = this.checkSocialMediaCompatibility(processedBlob, recordingDuration);
+      this.addLog(`📱 Instagram compatible: ${compatibility.instagram ? 'YES' : 'NO'}`);
       
-      this.addLog(`📱 Instagram: ${compatibility.instagram ? 'READY' : 'NEEDS_FIX'} (${compatibility.reason})`);
       await this.delay(250);
 
-      // Step 5: FIXED - Enhanced finalization with framerate metadata (100%)
-      onProgress({ percent: 90, message: "Finalizing optimized video..." });
+      // Step 5: Finalize (100%)
+      onProgress({ percent: 90, message: "Finalisasi video..." });
 
-      const finalFile = this.createEnhancedFinalFile(processedBlob, {
+      const finalFile = this.createFinalFile(processedBlob, {
         recordingDuration,
         isAndroid,
         processedAt: Date.now(),
@@ -130,20 +92,13 @@ export class VideoProcessor {
         fixedDuration: true,
         originalSize,
         processedSize: processedBlob.size,
-        format: isMP4 ? 'mp4' : 'webm',
-        // FIXED: Enhanced framerate metadata
-        targetFrameRate,
-        actualFrameRate,
-        isConstantFramerate,
-        frameRateVariance,
-        totalFrames,
-        qualityScore
+        format: isMP4 ? 'mp4' : 'webm'
       });
 
       await this.delay(200);
-      onProgress({ percent: 100, message: `Video ready! (${qualityScore}/100 quality)` });
+      onProgress({ percent: 100, message: "Video siap dibagikan!" });
 
-      this.addLog(`✅ Processing complete: ${this.formatFileSize(finalFile.size)}, Quality: ${qualityScore}/100`);
+      this.addLog(`✅ Processing complete: ${this.formatFileSize(finalFile.size)}`);
       return finalFile;
 
     } catch (error) {
@@ -153,133 +108,80 @@ export class VideoProcessor {
   }
 
   /**
-   * FIXED: Enhanced quality scoring based on framerate consistency
+   * Fix MP4 duration metadata using mp4box
    */
-  private calculateQualityScore(
-    duration: number,
-    frameRate: number,
-    isConstant: boolean,
-    fileSize: number,
-    isMP4: boolean
-  ): number {
-    let score = 0;
+  private async fixMP4Duration(blob: Blob, durationSeconds: number): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      try {
+        const mp4File = MP4Box.createFile();
+        
+        mp4File.onError = (error: any) => {
+          this.addLog(`❌ MP4Box error: ${error}`);
+          reject(new Error(`MP4 parsing failed: ${error}`));
+        };
 
-    // Duration score (0-20 points)
-    if (duration >= 3 && duration <= 60) score += 20;
-    else if (duration >= 2) score += 10;
+        mp4File.onReady = (info: any) => {
+          try {
+            this.addLog(`📊 MP4 info: ${info.duration}ms original duration`);
+            
+            // Calculate correct duration in timescale units
+            const timescale = info.timescale || 1000;
+            const correctDuration = durationSeconds * timescale;
+            
+            // Fix duration in movie header
+            if (info.videoTracks && info.videoTracks.length > 0) {
+              const videoTrack = info.videoTracks[0];
+              videoTrack.movie_duration = correctDuration;
+              videoTrack.duration = correctDuration;
+            }
+            
+            if (info.audioTracks && info.audioTracks.length > 0) {
+              const audioTrack = info.audioTracks[0];
+              audioTrack.movie_duration = correctDuration;
+              audioTrack.duration = correctDuration;
+            }
 
-    // Framerate score (0-30 points)
-    if (isConstant && frameRate >= 29 && frameRate <= 31) score += 30; // Perfect 30fps
-    else if (isConstant && frameRate >= 24 && frameRate <= 60) score += 25; // Good constant
-    else if (frameRate >= 24 && frameRate <= 60) score += 15; // Acceptable variable
-    else score += 5; // Poor framerate
+            // Start extraction with corrected metadata
+            mp4File.start();
+          } catch (error) {
+            reject(new Error(`MP4 duration fix failed: ${error}`));
+          }
+        };
 
-    // Format score (0-20 points)
-    if (isMP4) score += 20;
-    else score += 10;
+        mp4File.onSegment = (id: number, user: any, buffer: ArrayBuffer) => {
+          // Collect all segments
+          const correctedBlob = new Blob([buffer], { type: 'video/mp4' });
+          this.addLog(`✅ MP4 duration corrected: ${durationSeconds}s`);
+          resolve(correctedBlob);
+        };
 
-    // File size score (0-15 points)
-    const sizeMB = fileSize / (1024 * 1024);
-    if (sizeMB > 2 && sizeMB < 50) score += 15;
-    else if (sizeMB < 100) score += 10;
-    else score += 5;
+        // Load MP4 data
+        blob.arrayBuffer().then(buffer => {
+          const mp4Buffer = buffer as ArrayBuffer & { fileStart?: number };
+          mp4Buffer.fileStart = 0;
+          mp4File.appendBuffer(mp4Buffer);
+          mp4File.flush();
+        }).catch(reject);
 
-    // Instagram compatibility bonus (0-15 points)
-    if (isMP4 && isConstant && duration >= 3 && frameRate >= 24) score += 15;
-
-    return Math.min(100, score);
-  }
-
-  /**
-   * FIXED: Enhanced social media compatibility with framerate validation
-   */
-  private checkEnhancedSocialMediaCompatibility(
-    blob: Blob, 
-    duration: number,
-    frameRate: number,
-    isConstant: boolean
-  ) {
-    const sizeMB = blob.size / (1024 * 1024);
-    const isMP4 = blob.type.includes('mp4');
-    
-    // FIXED: Enhanced Instagram validation
-    const instagramReady = isMP4 && 
-                          sizeMB <= 100 && 
-                          duration >= 3 && 
-                          duration <= 60 && 
-                          isConstant && 
-                          frameRate >= 24 && 
-                          frameRate <= 60;
-
-    let reason = '';
-    if (!isMP4) reason = 'Need MP4 format';
-    else if (sizeMB > 100) reason = 'File too large';
-    else if (duration < 3) reason = 'Too short (<3s)';
-    else if (duration > 60) reason = 'Too long (>60s)';
-    else if (!isConstant) reason = 'Variable framerate';
-    else if (frameRate < 24 || frameRate > 60) reason = 'Invalid framerate';
-    else reason = 'Ready for Instagram';
-
-    return {
-      instagram: instagramReady,
-      tiktok: isMP4 && sizeMB <= 72 && duration >= 3 && duration <= 60 && isConstant,
-      youtube: sizeMB <= 256 && isConstant,
-      twitter: sizeMB <= 512 && duration <= 140 && isConstant,
-      reason
-    };
-  }
-
-  /**
-   * FIXED: Enhanced file creation with complete framerate metadata
-   */
-  private createEnhancedFinalFile(blob: Blob, metadata: ProcessedVideoMetadata): File {
-    const extension = metadata.format;
-    const filename = `ar_video_${Date.now()}.${extension}`;
-
-    const file = new File([blob], filename, {
-      type: metadata.format === 'mp4' ? 'video/mp4' : 'video/webm',
-      lastModified: Date.now()
+      } catch (error) {
+        reject(new Error(`MP4Box initialization failed: ${error}`));
+      }
     });
-
-    // FIXED: Add comprehensive metadata including framerate info
-    Object.keys(metadata).forEach(key => {
-      (file as any)[key] = metadata[key as keyof ProcessedVideoMetadata];
-    });
-
-    // Additional Instagram-specific metadata
-    (file as any).instagramOptimized = metadata.instagramCompatible;
-    (file as any).socialMediaReady = metadata.isConstantFramerate && metadata.format === 'mp4';
-    (file as any).qualityLevel = metadata.qualityScore >= 80 ? 'high' : 
-                                 metadata.qualityScore >= 60 ? 'medium' : 'low';
-
-    return file;
   }
 
   /**
-   * FIXED: Enhanced sharing with framerate validation warnings
+   * Share processed video
    */
   async shareVideo(file: File): Promise<boolean> {
     try {
       const duration = (file as any).recordingDuration || 0;
-      const frameRate = (file as any).actualFrameRate || 0;
-      const isConstant = (file as any).isConstantFramerate || false;
-      const qualityScore = (file as any).qualityScore || 0;
       const isCompatible = (file as any).instagramCompatible || false;
-
-      // FIXED: Enhanced validation before sharing
-      if (!isConstant) {
-        this.addLog('⚠️ Variable framerate detected - Instagram may show incorrect duration');
-      }
-
-      if (qualityScore < 60) {
-        this.addLog(`⚠️ Quality score low (${qualityScore}/100) - consider re-recording`);
-      }
 
       if (this.canUseWebShare() && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           files: [file],
           title: 'AR Video',
-          text: `AR video: ${duration}s @ ${frameRate.toFixed(1)}fps ${isConstant ? '(stable)' : '(variable)'} - Quality: ${qualityScore}/100`
+          text: `Check out this ${duration}s AR video! ${isCompatible ? '📱 Instagram ready!' : ''}`
         });
 
         this.addLog('✅ Video shared via Web Share API');
@@ -296,12 +198,53 @@ export class VideoProcessor {
     }
   }
 
+  /**
+   * Check social media compatibility
+   */
+  private checkSocialMediaCompatibility(blob: Blob, duration: number) {
+    const sizeMB = blob.size / (1024 * 1024);
+    const isMP4 = blob.type.includes('mp4');
+
+    return {
+      instagram: isMP4 && sizeMB <= 100 && duration >= 3 && duration <= 60,
+      tiktok: isMP4 && sizeMB <= 72 && duration >= 3 && duration <= 60,
+      youtube: sizeMB <= 256,
+      twitter: sizeMB <= 512 && duration <= 140
+    };
+  }
+
+  /**
+   * Create final file with metadata
+   */
+  private createFinalFile(blob: Blob, metadata: ProcessedVideoMetadata): File {
+    const extension = metadata.format;
+    const filename = `ar_video_${Date.now()}.${extension}`;
+
+    const file = new File([blob], filename, {
+      type: metadata.format === 'mp4' ? 'video/mp4' : 'video/webm',
+      lastModified: Date.now()
+    });
+
+    // Add metadata to file object
+    Object.keys(metadata).forEach(key => {
+      (file as any)[key] = metadata[key as keyof ProcessedVideoMetadata];
+    });
+
+    return file;
+  }
+
+  /**
+   * Check if Web Share API is available
+   */
   private canUseWebShare(): boolean {
     return typeof navigator !== 'undefined' && 
            'share' in navigator && 
            typeof navigator.share === 'function';
   }
 
+  /**
+   * Download file as fallback
+   */
   private downloadFile(file: File): void {
     const url = URL.createObjectURL(file);
     const a = document.createElement('a');
@@ -313,11 +256,17 @@ export class VideoProcessor {
     URL.revokeObjectURL(url);
   }
 
+  /**
+   * Format file size for display
+   */
   private formatFileSize(bytes: number): string {
     const mb = bytes / (1024 * 1024);
     return `${mb.toFixed(1)}MB`;
   }
 
+  /**
+   * Utility delay
+   */
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }

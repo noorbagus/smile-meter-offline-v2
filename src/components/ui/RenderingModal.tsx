@@ -64,9 +64,9 @@ export const RenderingModal: React.FC<RenderingModalProps> = ({
           {hasError ? (
             <p>Something went wrong. Please try again.</p>
           ) : isComplete ? (
-            <p>✅ Video optimized for Instagram and social media!</p>
+            <p>✅ Video optimized with MP4Box metadata fix for Instagram!</p>
           ) : (
-            <p>Fixing duration metadata for social media compatibility.</p>
+            <p>Fixing MP4 duration metadata with MP4Box for social media compatibility.</p>
           )}
         </div>
         

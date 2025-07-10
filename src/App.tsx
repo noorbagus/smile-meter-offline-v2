@@ -1,4 +1,4 @@
-// src/App.tsx - Updated with RenderingModal integration
+// src/App.tsx - Fixed unused imports
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -13,7 +13,6 @@ import {
   CameraControls,
   RecordingControls,
   VideoPreview,
-  ShareModal,
   SettingsPanel,
   RenderingModal
 } from './components';
@@ -56,11 +55,7 @@ const CameraApp: React.FC = () => {
     downloadVideo,
     showPreview,
     setShowPreview,
-    showShareModal,
-    setShowShareModal,
-    // New processing state
     processAndShareVideo,
-    isVideoProcessing,
     processingProgress,
     processingMessage,
     processingError,
