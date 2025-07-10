@@ -1,4 +1,4 @@
-// src/context/CameraContext.tsx
+// src/context/CameraContext.tsx - Fixed interface
 import React, { createContext, useContext, useRef } from 'react';
 import { useCameraKit, useCameraPermissions, useDebugLogger } from '../hooks';
 import type { CameraState, PermissionState, ErrorInfo } from '../hooks';
@@ -14,6 +14,7 @@ interface CameraContextValue {
   cleanup: () => void;
   getCanvas: () => HTMLCanvasElement | null;
   getStream: () => MediaStream | null;
+  restoreCameraFeed: () => void; // FIXED: Added this
   isReady: boolean;
   isInitializing: boolean;
   
@@ -53,7 +54,6 @@ interface CameraProviderProps {
 export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
   const cameraFeedRef = useRef<HTMLDivElement>(null);
   
-  // Initialize hooks
   const { debugLogs, addLog, clearLogs, exportLogs } = useDebugLogger();
   
   const {
@@ -76,6 +76,7 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     cleanup,
     getCanvas,
     getStream,
+    restoreCameraFeed, // FIXED: Get from hook
     isReady,
     isInitializing
   } = useCameraKit(addLog);
@@ -91,6 +92,7 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     cleanup,
     getCanvas,
     getStream,
+    restoreCameraFeed, // FIXED: Added to value
     isReady,
     isInitializing,
     

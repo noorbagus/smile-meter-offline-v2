@@ -1,4 +1,4 @@
-// src/utils/androidRecorderFix.ts - Updated with enhanced metadata handling
+// src/utils/androidRecorderFix.ts - MP4 priority for all platforms
 import fixWebmDuration from 'fix-webm-duration';
 
 /**
@@ -13,22 +13,16 @@ export const detectiOS = (): boolean => {
 };
 
 /**
- * Get optimized recorder options based on platform
+ * FIXED: MP4 priority for ALL platforms (Android + iPhone + Desktop)
  */
 export const getOptimizedRecorderOptions = () => {
-  const isAndroid = detectAndroid();
-  
-  const formats = isAndroid ? [
-    'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC for Instagram
+  // MP4 first for Instagram compatibility on ALL platforms
+  const formats = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC - Instagram optimal
     'video/mp4;codecs=h264,aac',
     'video/mp4',
-    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp9,opus', // Fallback only
     'video/webm'
-  ] : [
-    'video/webm;codecs=vp9,opus',
-    'video/webm',
-    'video/mp4;codecs=h264,aac',
-    'video/mp4'
   ];
 
   for (const mimeType of formats) {
@@ -54,6 +48,7 @@ export interface VideoMetadata {
   recordingDuration: number;
   actualDurationMs: number;
   isAndroidRecording: boolean;
+  isiOSRecording: boolean; // NEW
   originalMimeType: string;
   processedFormat: 'mp4' | 'webm';
   fixedMetadata: boolean;
@@ -62,11 +57,11 @@ export interface VideoMetadata {
   recordingStartTime: number;
   recordingEndTime: number;
   processingMethod: 'binary-mp4-fix' | 'webm-fix' | 'none';
+  platformOptimized: boolean; // NEW
 }
 
 /**
  * Legacy FixedMediaRecorder - kept for compatibility
- * NOTE: Use EnhancedMediaRecorder from useMediaRecorder.ts instead
  */
 export class FixedMediaRecorder {
   private recorder: MediaRecorder | null = null;
@@ -74,6 +69,7 @@ export class FixedMediaRecorder {
   private startTime: number = 0;
   private endTime: number = 0;
   private isAndroid: boolean;
+  private isiOS: boolean;
 
   constructor(
     private stream: MediaStream,
@@ -81,6 +77,7 @@ export class FixedMediaRecorder {
     private addLog: (msg: string) => void
   ) {
     this.isAndroid = detectAndroid();
+    this.isiOS = detectiOS();
   }
 
   start(): void {
@@ -106,10 +103,11 @@ export class FixedMediaRecorder {
         this.addLog(`❌ Recording error: ${event}`);
       };
       
-      const timeSlice = this.isAndroid ? 100 : 1000;
+      const timeSlice = 100; // Consistent for all platforms
       this.recorder.start(timeSlice);
       
-      this.addLog(`🎬 Recording started (${options.mimeType || 'default format'})`);
+      const platform = this.isAndroid ? 'Android' : this.isiOS ? 'iPhone' : 'Desktop';
+      this.addLog(`🎬 ${platform} recording started (${options.mimeType || 'default format'})`);
     } catch (error) {
       this.addLog(`❌ MediaRecorder creation failed: ${error}`);
       throw error;
@@ -150,26 +148,29 @@ export class FixedMediaRecorder {
         lastModified: timestamp
       });
 
-      // Basic metadata (EnhancedMediaRecorder has better implementation)
+      // Enhanced metadata with platform detection
       const metadata: VideoMetadata = {
         recordingDuration: durationSeconds,
         actualDurationMs,
         isAndroidRecording: this.isAndroid,
+        isiOSRecording: this.isiOS,
         originalMimeType: recorderMimeType,
         processedFormat: isMP4 ? 'mp4' : 'webm',
         fixedMetadata: false,
-        instagramCompatible: false,
+        instagramCompatible: isMP4 && durationSeconds >= 3,
         chunkCount: this.chunks.length,
         recordingStartTime: this.startTime,
         recordingEndTime: this.endTime,
-        processingMethod: 'none'
+        processingMethod: 'none',
+        platformOptimized: isMP4
       };
 
       Object.keys(metadata).forEach(key => {
         (finalFile as any)[key] = metadata[key as keyof VideoMetadata];
       });
 
-      this.addLog(`✅ Basic file: ${durationSeconds}s, ${this.formatFileSize(finalFile.size)}, ${finalFile.type}`);
+      const platform = this.isAndroid ? 'Android' : this.isiOS ? 'iPhone' : 'Desktop';
+      this.addLog(`✅ ${platform} file: ${durationSeconds}s, ${this.formatFileSize(finalFile.size)}, ${finalFile.type}`);
       this.onComplete(finalFile);
 
     } catch (error) {
@@ -199,8 +200,11 @@ export const shareVideoWithMetadata = async (
     const duration = (file as any).recordingDuration || 0;
     const hasMetadata = (file as any).fixedMetadata || false;
     const processingMethod = (file as any).processingMethod || 'none';
+    const isAndroid = (file as any).isAndroidRecording || false;
+    const isiOS = (file as any).isiOSRecording || false;
+    const platform = isAndroid ? 'Android' : isiOS ? 'iPhone' : 'Desktop';
     
-    addLog(`📱 Sharing: ${duration}s, metadata: ${hasMetadata ? 'Fixed' : 'Original'}, method: ${processingMethod}`);
+    addLog(`📱 ${platform} sharing: ${duration}s, metadata: ${hasMetadata ? 'Fixed' : 'Original'}, method: ${processingMethod}`);
     
     if (duration < 3) {
       addLog('⚠️ Video too short for Instagram (min 3s)');
@@ -214,10 +218,10 @@ export const shareVideoWithMetadata = async (
         title: 'My AR Video',
         text: `Check out this ${duration}s AR effect! 🎬 ${hasMetadata ? '(Optimized)' : ''}`
       });
-      addLog('✅ Native sharing successful');
+      addLog(`✅ ${platform} native sharing successful`);
       return true;
     } else {
-      addLog('📥 Using download method - share API not available');
+      addLog(`📥 ${platform} using download method - share API not available`);
       downloadWithInstructions(file, addLog);
       return true;
     }
@@ -243,15 +247,19 @@ const downloadWithInstructions = (file: File, addLog: (msg: string) => void) => 
   
   const duration = (file as any).recordingDuration || 0;
   const processingMethod = (file as any).processingMethod || 'none';
-  addLog(`💾 Downloaded ${duration}s video (${processingMethod}) for sharing`);
+  const isAndroid = (file as any).isAndroidRecording || false;
+  const isiOS = (file as any).isiOSRecording || false;
+  const platform = isAndroid ? 'Android' : isiOS ? 'iPhone' : 'Desktop';
   
-  showAndroidShareInstructions(file);
+  addLog(`💾 ${platform} downloaded ${duration}s video (${processingMethod}) for sharing`);
+  
+  showPlatformShareInstructions(file);
 };
 
 /**
- * Show sharing instructions for Android
+ * FIXED: Platform-specific sharing instructions
  */
-export const showAndroidShareInstructions = (file: File) => {
+export const showPlatformShareInstructions = (file: File) => {
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-6';
   
@@ -259,11 +267,14 @@ export const showAndroidShareInstructions = (file: File) => {
   const isMP4 = file.type.includes('mp4');
   const hasMetadata = (file as any).fixedMetadata || false;
   const processingMethod = (file as any).processingMethod || 'none';
+  const isAndroid = (file as any).isAndroidRecording || false;
+  const isiOS = (file as any).isiOSRecording || false;
+  const platform = isAndroid ? 'Android' : isiOS ? 'iPhone' : 'Desktop';
   
   overlay.innerHTML = `
     <div class="bg-white rounded-lg p-6 max-w-sm mx-auto text-center">
-      <div class="text-2xl mb-3">📱</div>
-      <h3 class="text-lg font-bold mb-4">Video Ready! (${duration}s)</h3>
+      <div class="text-2xl mb-3">${isAndroid ? '🤖' : isiOS ? '📱' : '💻'}</div>
+      <h3 class="text-lg font-bold mb-4">${platform} Video Ready! (${duration}s)</h3>
       <div class="text-sm text-gray-600 mb-4">
         ${isMP4 ? 
           '<p class="text-green-600 font-medium mb-2">✅ MP4 Format - Instagram Optimized</p>' : 
@@ -278,13 +289,20 @@ export const showAndroidShareInstructions = (file: File) => {
       <div class="text-xs text-left text-gray-700 mb-4 bg-gray-50 p-3 rounded">
         <p class="font-medium mb-2">Share to Instagram:</p>
         <ol class="space-y-1">
-          <li>1. Open device gallery/files</li>
-          <li>2. Find downloaded video</li>
-          <li>3. Tap Share button</li>
-          <li>4. Select Instagram Stories or Reels</li>
+          ${isiOS ? `
+            <li>1. Open Photos app</li>
+            <li>2. Find downloaded video</li>
+            <li>3. Tap Share button</li>
+            <li>4. Select Instagram</li>
+          ` : `
+            <li>1. Open device gallery/files</li>
+            <li>2. Find downloaded video</li>
+            <li>3. Tap Share button</li>
+            <li>4. Select Instagram Stories or Reels</li>
+          `}
           <li>5. Add effects and share! 🎉</li>
         </ol>
-        <p class="text-xs text-gray-500 mt-2">Duration: ${duration}s (${processingMethod} processed)</p>
+        <p class="text-xs text-gray-500 mt-2">${platform}: ${duration}s (${processingMethod} processed)</p>
       </div>
       <button onclick="this.parentElement.parentElement.remove()" 
               class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded text-sm font-medium transition-colors">
@@ -324,4 +342,5 @@ export const checkSocialMediaCompatibility = (file: File): {
 
 // Aliases for backward compatibility
 export const shareVideoAndroid = shareVideoWithMetadata;
-export const EnhancedMediaRecorder = FixedMediaRecorder; // Legacy alias
+export const showAndroidShareInstructions = showPlatformShareInstructions;
+export const EnhancedMediaRecorder = FixedMediaRecorder;

@@ -1,5 +1,5 @@
-// src/hooks/useCameraKit.ts
-import { useState, useRef, useCallback } from 'react';
+// src/hooks/useCameraKit.ts - Fixed with camera feed restoration
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { CAMERA_KIT_CONFIG, validateConfig } from '../config/cameraKit';
 import type { CameraState } from './useCameraPermissions';
@@ -50,24 +50,25 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lensRepositoryRef = useRef<any>(null);
   const isAttachedRef = useRef<boolean>(false);
+  const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
 
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
-    containerRef: React.RefObject<HTMLDivElement>
+    containerReference: React.RefObject<HTMLDivElement>
   ) => {
-    if (!containerRef.current) {
+    if (!containerReference.current) {
       addLog('❌ Camera feed container not available');
       return;
     }
 
     try {
       requestAnimationFrame(() => {
-        if (!containerRef.current) return;
+        if (!containerReference.current) return;
 
         // Safe DOM cleanup
-        while (containerRef.current.firstChild) {
+        while (containerReference.current.firstChild) {
           try {
-            containerRef.current.removeChild(containerRef.current.firstChild);
+            containerReference.current.removeChild(containerReference.current.firstChild);
           } catch (e) {
             break;
           }
@@ -85,7 +86,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         canvas.className = 'absolute inset-0 w-full h-full object-cover';
         
         try {
-          containerRef.current.appendChild(canvas);
+          containerReference.current.appendChild(canvas);
           isAttachedRef.current = true;
           addLog('✅ Camera output attached successfully');
         } catch (e) {
@@ -97,13 +98,63 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
   }, [addLog]);
 
+  // FIXED: Camera feed restoration on app return
+  const restoreCameraFeed = useCallback(() => {
+    if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
+      addLog('🔄 Restoring camera feed...');
+      
+      // Check if canvas is still attached
+      const isCanvasAttached = containerRef.current.current.contains(outputCanvasRef.current);
+      
+      if (!isCanvasAttached) {
+        addLog('📱 Re-attaching canvas after app return');
+        attachCameraOutput(outputCanvasRef.current, containerRef.current);
+      }
+      
+      // Resume session if paused
+      if (sessionRef.current.output?.live) {
+        try {
+          sessionRef.current.play('live');
+          addLog('▶️ Camera Kit session resumed');
+        } catch (error) {
+          addLog(`⚠️ Session resume error: ${error}`);
+        }
+      }
+    }
+  }, [addLog, attachCameraOutput]);
+
+  // FIXED: Page visibility handler for camera restoration
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        addLog('👁️ App became visible, checking camera feed...');
+        
+        // Delay to ensure DOM is ready
+        setTimeout(() => {
+          restoreCameraFeed();
+        }, 100);
+      } else {
+        addLog('🙈 App backgrounded');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [addLog, restoreCameraFeed]);
+
   const initializeCameraKit = useCallback(async (
     stream: MediaStream,
-    containerRef: React.RefObject<HTMLDivElement>
+    containerReference: React.RefObject<HTMLDivElement>
   ): Promise<boolean> => {
     try {
       addLog('🎭 Initializing Camera Kit...');
       setCameraState('initializing');
+
+      // Store container reference for restoration
+      containerRef.current = containerReference;
 
       // Get or bootstrap Camera Kit
       let cameraKit = cameraKitInstance;
@@ -171,8 +222,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       // Attach to DOM with delay
       setTimeout(() => {
-        if (session.output.live && containerRef.current && !isAttachedRef.current) {
-          attachCameraOutput(session.output.live, containerRef);
+        if (session.output.live && containerReference.current && !isAttachedRef.current) {
+          attachCameraOutput(session.output.live, containerReference);
         }
       }, 100);
 
@@ -262,6 +313,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       addLog('⏸️ Camera Kit session paused');
     }
     isAttachedRef.current = false;
+    containerRef.current = null;
   }, [addLog]);
 
   const getCanvas = useCallback(() => {
@@ -282,6 +334,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     cleanup,
     getCanvas,
     getStream,
+    restoreCameraFeed, // NEW: Manual restore function
     isReady: cameraState === 'ready',
     isInitializing: cameraState === 'initializing'
   };

@@ -1,4 +1,4 @@
-// src/context/RecordingContext.tsx
+// src/context/RecordingContext.tsx - Skip modal, direct share
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useMediaRecorder } from '../hooks';
 import { VideoProcessor, ProcessingProgress } from '../utils/VideoProcessor';
@@ -21,11 +21,11 @@ interface RecordingContextValue {
   cleanup: () => void;
   formatTime: (seconds: number) => string;
   
-  // Video Processing & Sharing
+  // FIXED: Direct share without modal
   processAndShareVideo: () => Promise<void>;
   downloadVideo: () => void;
   
-  // Processing State
+  // Processing State (minimal for background processing)
   isVideoProcessing: boolean;
   processingProgress: number;
   processingMessage: string;
@@ -37,7 +37,11 @@ interface RecordingContextValue {
   showPreview: boolean;
   setShowPreview: (show: boolean) => void;
   
-  // Share Modal State (legacy)
+  // Share Options
+  autoShareEnabled: boolean; // NEW
+  setAutoShareEnabled: (enabled: boolean) => void; // NEW
+  
+  // Legacy
   showShareModal: boolean;
   setShowShareModal: (show: boolean) => void;
 }
@@ -61,11 +65,11 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
   children, 
   addLog 
 }) => {
-  // Existing state
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [showShareModal, setShowShareModal] = useState<boolean>(false);
+  const [autoShareEnabled, setAutoShareEnabled] = useState<boolean>(true); // NEW: Default auto-share
   
-  // Video processing state
+  // Minimal processing state (background only)
   const [isVideoProcessing, setIsVideoProcessing] = useState<boolean>(false);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [processingMessage, setProcessingMessage] = useState<string>('');
@@ -89,14 +93,18 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     isIdle
   } = useMediaRecorder(addLog);
 
-  // Auto-show preview when recording completes
+  // FIXED: Auto-share when recording completes (no preview)
   useEffect(() => {
-    if (recordedVideo && recordingState === 'idle') {
+    if (recordedVideo && recordingState === 'idle' && autoShareEnabled) {
+      addLog('🚀 Auto-sharing video...');
+      processAndShareVideo();
+    } else if (recordedVideo && recordingState === 'idle' && !autoShareEnabled) {
       addLog('🎬 Recording completed - showing preview');
       setShowPreview(true);
     }
-  }, [recordedVideo, recordingState, addLog]);
+  }, [recordedVideo, recordingState, autoShareEnabled, addLog]);
 
+  // FIXED: Direct share without modal
   const processAndShareVideo = async () => {
     if (!recordedVideo) {
       addLog('❌ No video to process');
@@ -105,51 +113,48 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     
     try {
       setIsVideoProcessing(true);
-      setShowRenderingModal(true);
       setProcessingProgress(0);
       setProcessingError(null);
       
-      // Get recording duration
       const recordingDuration = (recordedVideo as any).recordingDuration || 
                                recordingTime || 
-                               5; // Fallback duration
+                               5;
       
-      addLog(`🎬 Starting video processing: ${recordingDuration}s`);
+      addLog(`🎬 Processing ${recordingDuration}s video for direct share...`);
       
-      // Process video with progress tracking
+      // Background processing (no modal)
       const processedFile = await videoProcessor.processVideo(
         recordedVideo,
         recordingDuration,
         (progress: ProcessingProgress) => {
           setProcessingProgress(progress.percent);
           setProcessingMessage(progress.message);
+          addLog(`📊 ${progress.message} (${progress.percent}%)`);
         }
       );
       
-      // Try to share processed video immediately
-      addLog('📱 Auto-sharing processed video...');
+      // FIXED: Immediate native share attempt
+      addLog('📱 Attempting native share...');
       const shareSuccess = await videoProcessor.shareVideo(processedFile);
       
-      if (!shareSuccess) {
-        // Show instructions for manual sharing
-        showShareInstructions(processedFile);
+      if (shareSuccess) {
+        addLog('✅ Video shared successfully via native share');
+      } else {
+        addLog('📥 Fallback: Video downloaded with share instructions');
       }
       
-      // Close modal and preview after auto-share attempt
+      // Reset state after share
       setTimeout(() => {
-        setShowRenderingModal(false);
         setShowPreview(false);
-      }, shareSuccess ? 1000 : 1500);
+        clearRecording();
+      }, 1000);
       
     } catch (error) {
       addLog(`❌ Processing failed: ${error}`);
       setProcessingError(error instanceof Error ? error.message : 'Processing failed');
       
-      // Fallback to original video download
-      setTimeout(() => {
-        downloadVideo();
-        setShowRenderingModal(false);
-      }, 2000);
+      // Fallback to direct download
+      downloadVideo();
       
     } finally {
       setIsVideoProcessing(false);
@@ -168,49 +173,6 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     addLog('💾 Video downloaded');
-  };
-
-  const showShareInstructions = (file: File) => {
-    const duration = (file as any).recordingDuration || 0;
-    const isOptimized = (file as any).instagramCompatible || false;
-    
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-6';
-    
-    overlay.innerHTML = `
-      <div class="bg-white rounded-lg p-6 max-w-sm mx-auto text-center">
-        <div class="text-2xl mb-3">📱</div>
-        <h3 class="text-lg font-bold mb-4">Video Ready! (${duration}s)</h3>
-        <div class="text-sm text-gray-600 mb-4">
-          ${isOptimized ? 
-            '<p class="text-green-600 font-medium mb-2">✅ Optimized for Instagram/TikTok</p>' : 
-            '<p class="text-yellow-600 mb-2">⚠️ May need conversion for some apps</p>'
-          }
-          <p class="text-xs">Video has been downloaded to your device</p>
-        </div>
-        <div class="text-xs text-left text-gray-700 mb-4 bg-gray-50 p-3 rounded">
-          <p class="font-medium mb-2">How to share to Instagram:</p>
-          <ol class="space-y-1">
-            <li>1. Open your device's gallery/files</li>
-            <li>2. Find the downloaded video</li>
-            <li>3. Tap Share button</li>
-            <li>4. Select Instagram Stories or Reels</li>
-            <li>5. Add effects and share! 🎉</li>
-          </ol>
-        </div>
-        <button onclick="this.parentElement.parentElement.remove()" 
-                class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded text-sm font-medium">
-          Got it!
-        </button>
-      </div>
-    `;
-    
-    document.body.appendChild(overlay);
-    setTimeout(() => {
-      if (document.body.contains(overlay)) {
-        overlay.remove();
-      }
-    }, 15000);
   };
 
   const value: RecordingContextValue = {
@@ -246,7 +208,11 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     showPreview,
     setShowPreview,
     
-    // Share Modal State (legacy)
+    // Share Options
+    autoShareEnabled,
+    setAutoShareEnabled,
+    
+    // Legacy
     showShareModal,
     setShowShareModal
   };

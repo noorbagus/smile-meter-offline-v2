@@ -1,11 +1,11 @@
-// src/hooks/useMediaRecorder.ts - Enhanced with binary MP4 duration fix
+// src/hooks/useMediaRecorder.ts - iPhone MP4 priority fix
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { detectAndroid } from '../utils/androidRecorderFix';
+import { detectAndroid, detectiOS } from '../utils/androidRecorderFix';
 
 export type RecordingState = 'idle' | 'recording' | 'processing';
 
 /**
- * Enhanced MediaRecorder with proper MP4 duration handling
+ * Enhanced MediaRecorder with iPhone MP4 priority
  */
 class EnhancedMediaRecorder {
   private recorder: MediaRecorder | null = null;
@@ -40,7 +40,7 @@ class EnhancedMediaRecorder {
     };
     
     // Smaller time slice for better duration accuracy
-    this.recorder.start(100); // 100ms chunks
+    this.recorder.start(100);
     
     this.addLog(`🎬 Enhanced recording started: ${options.mimeType || 'default'}`);
   }
@@ -52,17 +52,21 @@ class EnhancedMediaRecorder {
   }
 
   private getRecorderOptions() {
-    // Prioritize MP4 for Android Instagram compatibility
+    // FIXED: MP4 priority for ALL platforms (Android + iPhone)
+    const isAndroid = detectAndroid();
+    const isiOS = detectiOS();
+    
     const formats = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      'video/mp4;codecs=h264,aac', 
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC - Instagram optimal
+      'video/mp4;codecs=h264,aac',
       'video/mp4',
-      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp9,opus', // Fallback only
       'video/webm'
     ];
 
     for (const mimeType of formats) {
       if (MediaRecorder.isTypeSupported(mimeType)) {
+        this.addLog(`📱 Platform: ${isAndroid ? 'Android' : isiOS ? 'iPhone' : 'Desktop'}, Format: ${mimeType}`);
         return {
           mimeType,
           videoBitsPerSecond: 2500000, // High quality for Instagram
@@ -71,6 +75,7 @@ class EnhancedMediaRecorder {
       }
     }
 
+    this.addLog('⚠️ No supported formats found, using default');
     return { videoBitsPerSecond: 2500000 };
   }
 
@@ -101,14 +106,16 @@ class EnhancedMediaRecorder {
     (file as any).fixedMetadata = mimeType.includes('mp4');
     (file as any).instagramCompatible = mimeType.includes('mp4') && actualDurationSeconds >= 3;
     (file as any).isAndroidRecording = detectAndroid();
+    (file as any).isiOSRecording = detectiOS(); // NEW: iPhone detection
     (file as any).processingMethod = mimeType.includes('mp4') ? 'binary-mp4-fix' : 'original';
+    (file as any).platformOptimized = true; // NEW: All platforms get MP4
     
     this.addLog(`✅ Enhanced recording complete: ${actualDurationSeconds}s, ${this.formatSize(file.size)}`);
     this.onComplete(file);
   }
 
   /**
-   * Binary MP4 duration fix - manipulates MP4 headers directly
+   * Binary MP4 duration fix - works for Android + iPhone
    */
   private async fixMP4Duration(blob: Blob, durationSeconds: number): Promise<Blob> {
     try {
@@ -118,13 +125,8 @@ class EnhancedMediaRecorder {
       
       this.addLog(`🔧 Applying binary MP4 duration fix: ${durationSeconds}s`);
       
-      // Fix MVHD (Movie Header)
       const mvhdFixed = this.fixMVHDDuration(view, uint8Array, durationSeconds);
-      
-      // Fix TKHD (Track Headers)
       const tkhdFixed = this.fixTKHDDurations(view, uint8Array, durationSeconds);
-      
-      // Fix MDHD (Media Headers)
       const mdhdFixed = this.fixMDHDDurations(view, uint8Array, durationSeconds);
       
       if (mvhdFixed || tkhdFixed || mdhdFixed) {
@@ -268,41 +270,32 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
   const recordingStartTimeRef = useRef<number>(0);
 
   const startRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
-    if (!canvas) {
+    if (!canvas || !canvas.width || !canvas.height) {
       addLog('❌ Canvas not available for recording');
       return false;
     }
 
-    if (!canvas.width || !canvas.height) {
-      addLog('❌ Canvas has invalid dimensions');
-      return false;
-    }
-
     try {
-      // Create high-quality canvas stream
       let canvasStream: MediaStream;
       
       try {
-        canvasStream = canvas.captureStream(30); // 30fps
+        canvasStream = canvas.captureStream(30);
         addLog(`✅ Canvas stream: ${canvas.width}x${canvas.height}@30fps`);
       } catch (streamError) {
         canvasStream = canvas.captureStream();
         addLog(`⚠️ Using default canvas capture: ${streamError}`);
       }
       
-      // Add audio track if available
+      // Add audio if available
       if (audioStream && audioStream.getAudioTracks().length > 0) {
         const audioTrack = audioStream.getAudioTracks()[0];
         
         if (audioTrack.readyState === 'live') {
           canvasStream.addTrack(audioTrack);
           addLog(`✅ Audio track added: ${audioTrack.label || 'Default'}`);
-        } else {
-          addLog(`⚠️ Audio track not live: ${audioTrack.readyState}`);
         }
       }
 
-      // Validate stream
       const videoTracks = canvasStream.getVideoTracks();
       const audioTracks = canvasStream.getAudioTracks();
       
@@ -314,7 +307,6 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
 
       recordingStartTimeRef.current = performance.now();
 
-      // Initialize EnhancedMediaRecorder
       enhancedRecorderRef.current = new EnhancedMediaRecorder(
         canvasStream,
         (file: File) => {
@@ -322,14 +314,15 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
           const actualDurationMs = endTime - recordingStartTimeRef.current;
           const actualDurationSeconds = Math.floor(actualDurationMs / 1000);
           
-          // Enhanced metadata
+          // Platform-specific metadata
           (file as any).recordingStartTime = recordingStartTimeRef.current;
           (file as any).recordingEndTime = endTime;
           (file as any).canvasWidth = canvas.width;
           (file as any).canvasHeight = canvas.height;
           (file as any).hasAudioTrack = audioTracks.length > 0;
           
-          addLog(`✅ Recording complete: ${actualDurationSeconds}s with binary MP4 fix`);
+          const platform = detectAndroid() ? 'Android' : detectiOS() ? 'iPhone' : 'Desktop';
+          addLog(`✅ ${platform} recording complete: ${actualDurationSeconds}s with MP4 fix`);
           
           setRecordedVideo(file);
           setRecordingState('idle');
@@ -340,8 +333,8 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
       enhancedRecorderRef.current.start();
       setRecordingState('recording');
       
-      const platform = detectAndroid() ? 'Android MP4' : 'Standard';
-      addLog(`🎬 Enhanced recording started: ${platform} with duration fix`);
+      const platform = detectAndroid() ? 'Android' : detectiOS() ? 'iPhone' : 'Desktop';
+      addLog(`🎬 ${platform} MP4 recording started with duration fix`);
       return true;
 
     } catch (error) {
@@ -359,7 +352,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
       if (recorderState === 'recording') {
         recorder.stop();
         setRecordingState('processing');
-        addLog('⏹️ Recording stopped, applying binary MP4 duration fix...');
+        addLog('⏹️ Recording stopped, applying MP4 duration fix...');
       } else {
         addLog(`⚠️ Recorder not in recording state: ${recorderState}`);
         setRecordingState('idle');
@@ -369,7 +362,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
 
   const toggleRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
     if (recordingState === 'recording') {
-      if (recordingTime >= 3) { // Minimum 3 seconds for Instagram
+      if (recordingTime >= 3) {
         stopRecording();
       } else {
         addLog(`⚠️ Recording too short (${recordingTime}s) - minimum 3 seconds for Instagram`);
