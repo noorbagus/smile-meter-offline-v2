@@ -1,4 +1,4 @@
-// src/App.tsx - Auto-recovery handling
+// src/App.tsx - Full fixed version
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -38,7 +38,7 @@ const CameraApp: React.FC = () => {
     debugLogs,
     exportLogs,
     isReady,
-    restoreCameraFeed // NEW: Manual restore function
+    restoreCameraFeed
   } = useCameraContext();
 
   const {
@@ -60,7 +60,7 @@ const CameraApp: React.FC = () => {
     setAutoShareEnabled
   } = useRecordingContext();
 
-  // FIXED: Auto-recovery on app focus
+  // Auto-recovery on app focus
   useEffect(() => {
     const handleFocus = () => {
       if (cameraState === 'ready') {
@@ -90,6 +90,11 @@ const CameraApp: React.FC = () => {
   }, [cameraState, addLog, restoreCameraFeed]);
 
   const initializeApp = useCallback(async () => {
+    if (cameraState === 'ready') {
+      addLog('📱 Camera already ready, skipping initialization');
+      return;
+    }
+
     try {
       addLog('🎬 Starting app initialization...');
       
@@ -106,7 +111,7 @@ const CameraApp: React.FC = () => {
     } catch (error) {
       addLog(`❌ App initialization failed: ${error}`);
     }
-  }, [addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef]);
+  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef]);
 
   const handleSwitchCamera = useCallback(async () => {
     if (!isReady) return;
