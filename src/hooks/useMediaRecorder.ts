@@ -1,103 +1,335 @@
-// src/hooks/useMediaRecorder.ts - FIXED for constant 30fps
+// src/hooks/useMediaRecorder.ts - Enhanced with binary MP4 duration fix
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { FixedMediaRecorder, detectAndroid } from '../utils/androidRecorderFix';
+import { detectAndroid } from '../utils/androidRecorderFix';
 
 export type RecordingState = 'idle' | 'recording' | 'processing';
+
+/**
+ * Enhanced MediaRecorder with proper MP4 duration handling
+ */
+class EnhancedMediaRecorder {
+  private recorder: MediaRecorder | null = null;
+  private chunks: Blob[] = [];
+  private startTime: number = 0;
+
+  constructor(
+    private stream: MediaStream,
+    private onComplete: (file: File) => void,
+    private addLog: (msg: string) => void
+  ) {}
+
+  async start(): Promise<void> {
+    const options = this.getRecorderOptions();
+    
+    this.recorder = new MediaRecorder(this.stream, options);
+    this.chunks = [];
+    this.startTime = Date.now();
+    
+    this.recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        this.chunks.push(event.data);
+      }
+    };
+    
+    this.recorder.onstop = async () => {
+      await this.processRecording();
+    };
+    
+    this.recorder.onerror = (event) => {
+      this.addLog(`❌ Recording error: ${event}`);
+    };
+    
+    // Smaller time slice for better duration accuracy
+    this.recorder.start(100); // 100ms chunks
+    
+    this.addLog(`🎬 Enhanced recording started: ${options.mimeType || 'default'}`);
+  }
+
+  stop(): void {
+    if (this.recorder && this.recorder.state === 'recording') {
+      this.recorder.stop();
+    }
+  }
+
+  private getRecorderOptions() {
+    // Prioritize MP4 for Android Instagram compatibility
+    const formats = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=h264,aac', 
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm'
+    ];
+
+    for (const mimeType of formats) {
+      if (MediaRecorder.isTypeSupported(mimeType)) {
+        return {
+          mimeType,
+          videoBitsPerSecond: 2500000, // High quality for Instagram
+          audioBitsPerSecond: 128000
+        };
+      }
+    }
+
+    return { videoBitsPerSecond: 2500000 };
+  }
+
+  private async processRecording(): Promise<void> {
+    const endTime = Date.now();
+    const actualDurationMs = endTime - this.startTime;
+    const actualDurationSeconds = Math.max(1, Math.floor(actualDurationMs / 1000));
+    
+    this.addLog(`📊 Processing: ${this.chunks.length} chunks, ${actualDurationSeconds}s`);
+    
+    const mimeType = this.recorder?.mimeType || 'video/mp4';
+    let blob = new Blob(this.chunks, { type: mimeType });
+    
+    // Apply binary MP4 duration fix for Instagram compatibility
+    if (mimeType.includes('mp4')) {
+      blob = await this.fixMP4Duration(blob, actualDurationSeconds);
+    }
+    
+    const filename = `video_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+    const file = new File([blob], filename, {
+      type: blob.type,
+      lastModified: Date.now()
+    });
+    
+    // Enhanced metadata
+    (file as any).recordingDuration = actualDurationSeconds;
+    (file as any).actualDurationMs = actualDurationMs;
+    (file as any).fixedMetadata = mimeType.includes('mp4');
+    (file as any).instagramCompatible = mimeType.includes('mp4') && actualDurationSeconds >= 3;
+    (file as any).isAndroidRecording = detectAndroid();
+    (file as any).processingMethod = mimeType.includes('mp4') ? 'binary-mp4-fix' : 'original';
+    
+    this.addLog(`✅ Enhanced recording complete: ${actualDurationSeconds}s, ${this.formatSize(file.size)}`);
+    this.onComplete(file);
+  }
+
+  /**
+   * Binary MP4 duration fix - manipulates MP4 headers directly
+   */
+  private async fixMP4Duration(blob: Blob, durationSeconds: number): Promise<Blob> {
+    try {
+      const buffer = await blob.arrayBuffer();
+      const view = new DataView(buffer);
+      const uint8Array = new Uint8Array(buffer);
+      
+      this.addLog(`🔧 Applying binary MP4 duration fix: ${durationSeconds}s`);
+      
+      // Fix MVHD (Movie Header)
+      const mvhdFixed = this.fixMVHDDuration(view, uint8Array, durationSeconds);
+      
+      // Fix TKHD (Track Headers)
+      const tkhdFixed = this.fixTKHDDurations(view, uint8Array, durationSeconds);
+      
+      // Fix MDHD (Media Headers)
+      const mdhdFixed = this.fixMDHDDurations(view, uint8Array, durationSeconds);
+      
+      if (mvhdFixed || tkhdFixed || mdhdFixed) {
+        this.addLog(`✅ MP4 duration headers fixed for Instagram compatibility`);
+        return new Blob([uint8Array], { type: 'video/mp4' });
+      } else {
+        this.addLog(`⚠️ No MP4 headers found to fix`);
+        return blob;
+      }
+      
+    } catch (error) {
+      this.addLog(`❌ MP4 fix failed: ${error}`);
+      return blob;
+    }
+  }
+
+  private fixMVHDDuration(view: DataView, data: Uint8Array, durationSeconds: number): boolean {
+    const mvhdOffset = this.findBoxOffset(data, 'mvhd');
+    if (mvhdOffset === -1) return false;
+
+    try {
+      const version = view.getUint8(mvhdOffset + 8);
+      const timescaleOffset = mvhdOffset + (version === 1 ? 28 : 20);
+      const durationOffset = timescaleOffset + 4;
+      
+      const timescale = view.getUint32(timescaleOffset);
+      const newDuration = durationSeconds * timescale;
+      
+      if (version === 1) {
+        view.setBigUint64(durationOffset, BigInt(newDuration));
+      } else {
+        view.setUint32(durationOffset, newDuration);
+      }
+      
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private fixTKHDDurations(view: DataView, data: Uint8Array, durationSeconds: number): boolean {
+    let fixed = false;
+    let offset = 0;
+    
+    while (true) {
+      const tkhdOffset = this.findBoxOffset(data, 'tkhd', offset);
+      if (tkhdOffset === -1) break;
+      
+      try {
+        const version = view.getUint8(tkhdOffset + 8);
+        const durationOffset = tkhdOffset + (version === 1 ? 36 : 28);
+        
+        const movieTimescale = 1000;
+        const newDuration = durationSeconds * movieTimescale;
+        
+        if (version === 1) {
+          view.setBigUint64(durationOffset, BigInt(newDuration));
+        } else {
+          view.setUint32(durationOffset, newDuration);
+        }
+        
+        fixed = true;
+        offset = tkhdOffset + 1;
+      } catch (error) {
+        break;
+      }
+    }
+    
+    return fixed;
+  }
+
+  private fixMDHDDurations(view: DataView, data: Uint8Array, durationSeconds: number): boolean {
+    let fixed = false;
+    let offset = 0;
+    
+    while (true) {
+      const mdhdOffset = this.findBoxOffset(data, 'mdhd', offset);
+      if (mdhdOffset === -1) break;
+      
+      try {
+        const version = view.getUint8(mdhdOffset + 8);
+        const timescaleOffset = mdhdOffset + (version === 1 ? 28 : 20);
+        const durationOffset = timescaleOffset + 4;
+        
+        const timescale = view.getUint32(timescaleOffset);
+        const newDuration = durationSeconds * timescale;
+        
+        if (version === 1) {
+          view.setBigUint64(durationOffset, BigInt(newDuration));
+        } else {
+          view.setUint32(durationOffset, newDuration);
+        }
+        
+        fixed = true;
+        offset = mdhdOffset + 1;
+      } catch (error) {
+        break;
+      }
+    }
+    
+    return fixed;
+  }
+
+  private findBoxOffset(data: Uint8Array, fourCC: string, startOffset: number = 0): number {
+    const target = new TextEncoder().encode(fourCC);
+    
+    for (let i = startOffset; i < data.length - 8; i++) {
+      if (i % 4 === 0) {
+        const boxSize = new DataView(data.buffer).getUint32(i);
+        
+        if (boxSize >= 8 && boxSize < data.length && i + boxSize <= data.length) {
+          if (data[i + 4] === target[0] && 
+              data[i + 5] === target[1] && 
+              data[i + 6] === target[2] && 
+              data[i + 7] === target[3]) {
+            return i;
+          }
+        }
+      }
+    }
+    
+    return -1;
+  }
+
+  private formatSize(bytes: number): string {
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  }
+
+  getState(): string {
+    return this.recorder?.state || 'inactive';
+  }
+}
 
 export const useMediaRecorder = (addLog: (message: string) => void) => {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordingTime, setRecordingTime] = useState<number>(0);
   const [recordedVideo, setRecordedVideo] = useState<Blob | File | null>(null);
 
-  const fixedRecorderRef = useRef<FixedMediaRecorder | null>(null);
+  const enhancedRecorderRef = useRef<EnhancedMediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
   const recordingStartTimeRef = useRef<number>(0);
 
-  /**
-   * FIXED: Enhanced recording start with constant framerate validation
-   */
   const startRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
     if (!canvas) {
       addLog('❌ Canvas not available for recording');
       return false;
     }
 
-    // FIXED: Validate canvas for constant framerate capture
     if (!canvas.width || !canvas.height) {
       addLog('❌ Canvas has invalid dimensions');
       return false;
     }
 
-    if (typeof canvas.captureStream !== 'function') {
-      addLog('❌ Canvas.captureStream not supported');
-      return false;
-    }
-
     try {
-      // FIXED: Create high-quality stream for constant framerate
+      // Create high-quality canvas stream
       let canvasStream: MediaStream;
       
       try {
-        // Force 30fps capture
-        canvasStream = canvas.captureStream(30);
+        canvasStream = canvas.captureStream(30); // 30fps
         addLog(`✅ Canvas stream: ${canvas.width}x${canvas.height}@30fps`);
       } catch (streamError) {
-        // Fallback to default capture
         canvasStream = canvas.captureStream();
         addLog(`⚠️ Using default canvas capture: ${streamError}`);
       }
       
-      // FIXED: Enhanced audio integration with sync validation
+      // Add audio track if available
       if (audioStream && audioStream.getAudioTracks().length > 0) {
         const audioTrack = audioStream.getAudioTracks()[0];
         
-        // Validate audio track before adding
         if (audioTrack.readyState === 'live') {
           canvasStream.addTrack(audioTrack);
           addLog(`✅ Audio track added: ${audioTrack.label || 'Default'}`);
         } else {
           addLog(`⚠️ Audio track not live: ${audioTrack.readyState}`);
         }
-      } else {
-        addLog('ℹ️ No audio stream available');
       }
 
-      // FIXED: Validate stream before recording
+      // Validate stream
       const videoTracks = canvasStream.getVideoTracks();
       const audioTracks = canvasStream.getAudioTracks();
       
-      addLog(`📊 Stream validation: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
+      addLog(`📊 Stream: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
       
       if (videoTracks.length === 0) {
         throw new Error('No video tracks in canvas stream');
       }
 
-      // Record precise start time for duration calculation
       recordingStartTimeRef.current = performance.now();
 
-      // FIXED: Initialize FixedMediaRecorder with enhanced options
-      fixedRecorderRef.current = new FixedMediaRecorder(
+      // Initialize EnhancedMediaRecorder
+      enhancedRecorderRef.current = new EnhancedMediaRecorder(
         canvasStream,
         (file: File) => {
-          // FIXED: Enhanced completion with framerate validation
           const endTime = performance.now();
           const actualDurationMs = endTime - recordingStartTimeRef.current;
           const actualDurationSeconds = Math.floor(actualDurationMs / 1000);
           
-          // Enhanced metadata with framerate tracking
-          (file as any).recordingDuration = actualDurationSeconds;
+          // Enhanced metadata
           (file as any).recordingStartTime = recordingStartTimeRef.current;
           (file as any).recordingEndTime = endTime;
-          (file as any).actualDurationMs = actualDurationMs;
           (file as any).canvasWidth = canvas.width;
           (file as any).canvasHeight = canvas.height;
           (file as any).hasAudioTrack = audioTracks.length > 0;
           
-          // Log final recording stats
-          const frameRate = (file as any).actualFrameRate || 0;
-          const isConstant = (file as any).isConstantFramerate || false;
-          
-          addLog(`✅ Recording complete: ${actualDurationSeconds}s @ ${frameRate.toFixed(1)}fps ${isConstant ? '(constant)' : '(variable)'}`);
+          addLog(`✅ Recording complete: ${actualDurationSeconds}s with binary MP4 fix`);
           
           setRecordedVideo(file);
           setRecordingState('idle');
@@ -105,11 +337,11 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
         addLog
       );
 
-      fixedRecorderRef.current.start();
+      enhancedRecorderRef.current.start();
       setRecordingState('recording');
       
       const platform = detectAndroid() ? 'Android MP4' : 'Standard';
-      addLog(`🎬 Recording started: ${platform} @ 30fps target`);
+      addLog(`🎬 Enhanced recording started: ${platform} with duration fix`);
       return true;
 
     } catch (error) {
@@ -119,40 +351,30 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
     }
   }, [addLog]);
 
-  /**
-   * FIXED: Enhanced stop with validation
-   */
   const stopRecording = useCallback(() => {
-    if (fixedRecorderRef.current && recordingState === 'recording') {
-      const recorder = fixedRecorderRef.current;
+    if (enhancedRecorderRef.current && recordingState === 'recording') {
+      const recorder = enhancedRecorderRef.current;
       const recorderState = recorder.getState();
       
       if (recorderState === 'recording') {
         recorder.stop();
         setRecordingState('processing');
-        addLog('⏹️ Recording stopped, processing for constant framerate...');
+        addLog('⏹️ Recording stopped, applying binary MP4 duration fix...');
       } else {
         addLog(`⚠️ Recorder not in recording state: ${recorderState}`);
         setRecordingState('idle');
       }
-    } else {
-      addLog('⚠️ No active recorder to stop');
     }
   }, [recordingState, addLog]);
 
-  /**
-   * FIXED: Enhanced toggle with minimum duration and framerate validation
-   */
   const toggleRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
     if (recordingState === 'recording') {
-      // FIXED: Validate minimum duration for stable framerate
-      if (recordingTime >= 3) { // Increased from 2 to 3 seconds for better Instagram compatibility
+      if (recordingTime >= 3) { // Minimum 3 seconds for Instagram
         stopRecording();
       } else {
         addLog(`⚠️ Recording too short (${recordingTime}s) - minimum 3 seconds for Instagram`);
       }
     } else if (recordingState === 'idle') {
-      // FIXED: Pre-flight validation
       if (!canvas) {
         addLog('❌ Canvas required for recording');
         return;
@@ -164,10 +386,8 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
       
       const success = startRecording(canvas, audioStream);
       if (!success) {
-        addLog('❌ Failed to start recording');
+        addLog('❌ Failed to start enhanced recording');
       }
-    } else {
-      addLog(`⚠️ Cannot toggle recording in state: ${recordingState}`);
     }
   }, [recordingState, recordingTime, startRecording, stopRecording, addLog]);
 
@@ -180,32 +400,29 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
   }, [addLog]);
 
   const cleanup = useCallback(() => {
-    if (fixedRecorderRef.current) {
-      const recorderState = fixedRecorderRef.current.getState();
+    if (enhancedRecorderRef.current) {
+      const recorderState = enhancedRecorderRef.current.getState();
       if (recorderState === 'recording') {
-        fixedRecorderRef.current.stop();
+        enhancedRecorderRef.current.stop();
       }
-      fixedRecorderRef.current = null;
+      enhancedRecorderRef.current = null;
     }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    addLog('🧹 MediaRecorder cleanup complete');
+    addLog('🧹 Enhanced MediaRecorder cleanup complete');
   }, [addLog]);
 
-  /**
-   * FIXED: Enhanced timer with framerate monitoring
-   */
+  // Recording timer
   useEffect(() => {
     if (recordingState === 'recording') {
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1;
           
-          // Log framerate info periodically
-          if (newTime % 5 === 0 && fixedRecorderRef.current) {
-            const state = fixedRecorderRef.current.getState();
+          if (newTime % 5 === 0 && enhancedRecorderRef.current) {
+            const state = enhancedRecorderRef.current.getState();
             addLog(`📊 Recording: ${newTime}s, state: ${state}`);
           }
           

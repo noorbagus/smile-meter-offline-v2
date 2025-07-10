@@ -2,28 +2,24 @@
 import fixWebmDuration from 'fix-webm-duration';
 
 /**
- * Deteksi apakah perangkat menggunakan Android
+ * Platform detection
  */
 export const detectAndroid = (): boolean => {
   return /Android/i.test(navigator.userAgent);
 };
 
-/**
- * Deteksi apakah perangkat menggunakan iOS
- */
 export const detectiOS = (): boolean => {
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 };
 
 /**
- * Mendapatkan opsi MediaRecorder yang optimal berdasarkan platform
+ * Get optimized recorder options based on platform
  */
 export const getOptimizedRecorderOptions = () => {
   const isAndroid = detectAndroid();
   
-  // Prioritas format untuk Android (Instagram-friendly)
   const formats = isAndroid ? [
-    'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC for Instagram
     'video/mp4;codecs=h264,aac',
     'video/mp4',
     'video/webm;codecs=vp9,opus',
@@ -35,18 +31,16 @@ export const getOptimizedRecorderOptions = () => {
     'video/mp4'
   ];
 
-  // Cari format yang didukung
   for (const mimeType of formats) {
     if (MediaRecorder.isTypeSupported(mimeType)) {
       return {
         mimeType,
-        videoBitsPerSecond: isAndroid ? 2500000 : 2500000, // High quality
+        videoBitsPerSecond: 2500000, // High quality
         audioBitsPerSecond: 128000,
       };
     }
   }
 
-  // Fallback jika tidak ada format yang didukung
   return {
     videoBitsPerSecond: 2500000,
     audioBitsPerSecond: 128000,
@@ -54,7 +48,7 @@ export const getOptimizedRecorderOptions = () => {
 };
 
 /**
- * Enhanced metadata for processed videos
+ * Enhanced video metadata interface
  */
 export interface VideoMetadata {
   recordingDuration: number;
@@ -67,11 +61,12 @@ export interface VideoMetadata {
   chunkCount: number;
   recordingStartTime: number;
   recordingEndTime: number;
-  processingMethod: 'mp4box' | 'webm-fix' | 'none';
+  processingMethod: 'binary-mp4-fix' | 'webm-fix' | 'none';
 }
 
 /**
- * MediaRecorder yang diperbaiki dengan penanganan metadata durasi
+ * Legacy FixedMediaRecorder - kept for compatibility
+ * NOTE: Use EnhancedMediaRecorder from useMediaRecorder.ts instead
  */
 export class FixedMediaRecorder {
   private recorder: MediaRecorder | null = null;
@@ -111,8 +106,7 @@ export class FixedMediaRecorder {
         this.addLog(`❌ Recording error: ${event}`);
       };
       
-      // Gunakan time slice yang lebih kecil untuk Android untuk mencegah masalah
-      const timeSlice = this.isAndroid ? 100 : 1000; // ms
+      const timeSlice = this.isAndroid ? 100 : 1000;
       this.recorder.start(timeSlice);
       
       this.addLog(`🎬 Recording started (${options.mimeType || 'default format'})`);
@@ -156,27 +150,26 @@ export class FixedMediaRecorder {
         lastModified: timestamp
       });
 
-      // Enhanced metadata for video processing
+      // Basic metadata (EnhancedMediaRecorder has better implementation)
       const metadata: VideoMetadata = {
         recordingDuration: durationSeconds,
         actualDurationMs,
         isAndroidRecording: this.isAndroid,
         originalMimeType: recorderMimeType,
         processedFormat: isMP4 ? 'mp4' : 'webm',
-        fixedMetadata: false, // Will be set to true after processing
-        instagramCompatible: false, // Will be determined during processing
+        fixedMetadata: false,
+        instagramCompatible: false,
         chunkCount: this.chunks.length,
         recordingStartTime: this.startTime,
         recordingEndTime: this.endTime,
-        processingMethod: 'none' // Will be updated during processing
+        processingMethod: 'none'
       };
 
-      // Add metadata to file
       Object.keys(metadata).forEach(key => {
         (finalFile as any)[key] = metadata[key as keyof VideoMetadata];
       });
 
-      this.addLog(`✅ Initial file: ${durationSeconds}s, ${this.formatFileSize(finalFile.size)}, ${finalFile.type}`);
+      this.addLog(`✅ Basic file: ${durationSeconds}s, ${this.formatFileSize(finalFile.size)}, ${finalFile.type}`);
       this.onComplete(finalFile);
 
     } catch (error) {
@@ -196,7 +189,7 @@ export class FixedMediaRecorder {
 }
 
 /**
- * Berbagi video dengan metadata yang sudah diperbaiki
+ * Share video with metadata
  */
 export const shareVideoWithMetadata = async (
   file: File, 
@@ -209,14 +202,12 @@ export const shareVideoWithMetadata = async (
     
     addLog(`📱 Sharing: ${duration}s, metadata: ${hasMetadata ? 'Fixed' : 'Original'}, method: ${processingMethod}`);
     
-    // Validasi untuk Instagram
     if (duration < 3) {
-      addLog('⚠️ Video terlalu pendek untuk Instagram (min 3s)');
-      alert('Video terlalu pendek! Instagram memerlukan video minimal 3 detik.');
+      addLog('⚠️ Video too short for Instagram (min 3s)');
+      alert('Video too short! Instagram requires minimum 3 seconds.');
       return false;
     }
 
-    // Method 1: Native Web Share API
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({
         files: [file],
@@ -226,7 +217,6 @@ export const shareVideoWithMetadata = async (
       addLog('✅ Native sharing successful');
       return true;
     } else {
-      // Method 2: Download dan tampilkan instruksi
       addLog('📥 Using download method - share API not available');
       downloadWithInstructions(file, addLog);
       return true;
@@ -239,7 +229,7 @@ export const shareVideoWithMetadata = async (
 };
 
 /**
- * Download file dengan instruksi yang jelas untuk pengguna
+ * Download with user instructions
  */
 const downloadWithInstructions = (file: File, addLog: (msg: string) => void) => {
   const url = URL.createObjectURL(file);
@@ -259,7 +249,7 @@ const downloadWithInstructions = (file: File, addLog: (msg: string) => void) => 
 };
 
 /**
- * Tampilkan instruksi cara berbagi untuk Android
+ * Show sharing instructions for Android
  */
 export const showAndroidShareInstructions = (file: File) => {
   const overlay = document.createElement('div');
@@ -273,32 +263,32 @@ export const showAndroidShareInstructions = (file: File) => {
   overlay.innerHTML = `
     <div class="bg-white rounded-lg p-6 max-w-sm mx-auto text-center">
       <div class="text-2xl mb-3">📱</div>
-      <h3 class="text-lg font-bold mb-4">Video Siap! (${duration}s)</h3>
+      <h3 class="text-lg font-bold mb-4">Video Ready! (${duration}s)</h3>
       <div class="text-sm text-gray-600 mb-4">
         ${isMP4 ? 
-          '<p class="text-green-600 font-medium mb-2">✅ Format MP4 - Optimal untuk Instagram</p>' : 
-          '<p class="text-yellow-600 mb-2">⚠️ Format WebM - Mungkin perlu dikonversi</p>'
+          '<p class="text-green-600 font-medium mb-2">✅ MP4 Format - Instagram Optimized</p>' : 
+          '<p class="text-yellow-600 mb-2">⚠️ WebM Format - May need conversion</p>'
         }
         ${hasMetadata ? 
-          `<p class="text-blue-600 text-xs mb-2">✅ Metadata diperbaiki (${processingMethod})</p>` : 
-          '<p class="text-orange-600 text-xs mb-2">⚠️ Metadata original</p>'
+          `<p class="text-blue-600 text-xs mb-2">✅ Duration metadata fixed (${processingMethod})</p>` : 
+          '<p class="text-orange-600 text-xs mb-2">⚠️ Original metadata</p>'
         }
-        <p class="text-xs">Video telah diunduh ke perangkat Anda</p>
+        <p class="text-xs">Video downloaded to your device</p>
       </div>
       <div class="text-xs text-left text-gray-700 mb-4 bg-gray-50 p-3 rounded">
-        <p class="font-medium mb-2">Cara Berbagi ke Instagram:</p>
+        <p class="font-medium mb-2">Share to Instagram:</p>
         <ol class="space-y-1">
-          <li>1. Buka aplikasi galeri/file di perangkat Anda</li>
-          <li>2. Temukan video yang baru diunduh</li>
-          <li>3. Tekan tombol Share/Bagikan</li>
-          <li>4. Pilih Instagram Stories atau Reels</li>
-          <li>5. Tambahkan efek dan bagikan! 🎉</li>
+          <li>1. Open device gallery/files</li>
+          <li>2. Find downloaded video</li>
+          <li>3. Tap Share button</li>
+          <li>4. Select Instagram Stories or Reels</li>
+          <li>5. Add effects and share! 🎉</li>
         </ol>
-        <p class="text-xs text-gray-500 mt-2">Durasi video: ${duration}s (${processingMethod} processed)</p>
+        <p class="text-xs text-gray-500 mt-2">Duration: ${duration}s (${processingMethod} processed)</p>
       </div>
       <button onclick="this.parentElement.parentElement.remove()" 
               class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded text-sm font-medium transition-colors">
-        Mengerti!
+        Got it!
       </button>
     </div>
   `;
@@ -312,7 +302,7 @@ export const showAndroidShareInstructions = (file: File) => {
 };
 
 /**
- * Memeriksa kompatibilitas dengan media sosial berdasarkan format dan ukuran
+ * Check social media compatibility
  */
 export const checkSocialMediaCompatibility = (file: File): {
   instagram: boolean;
@@ -332,6 +322,6 @@ export const checkSocialMediaCompatibility = (file: File): {
   };
 };
 
-// Alias untuk kompatibilitas backward
+// Aliases for backward compatibility
 export const shareVideoAndroid = shareVideoWithMetadata;
-export const EnhancedMediaRecorder = FixedMediaRecorder;
+export const EnhancedMediaRecorder = FixedMediaRecorder; // Legacy alias
