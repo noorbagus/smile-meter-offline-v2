@@ -1,4 +1,4 @@
-// src/App.tsx - Complete with Instagram browser detection
+// src/App.tsx - FIXED: Instagram browser detection logic
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -15,13 +15,15 @@ import {
   VideoPreview,
   SettingsPanel,
   RenderingModal,
-  InstagramBrowserOverlay  // Impor komponen baru
+  InstagramBrowserOverlay
 } from './components';
+import { isInstagramBrowser } from './utils/instagramBrowserDetector';
 
 const CameraApp: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [bypassedInstagram, setBypassedInstagram] = useState<boolean>(false);
+  const [showInstagramOverlay, setShowInstagramOverlay] = useState<boolean>(false);
 
   const {
     cameraState,
@@ -60,6 +62,19 @@ const CameraApp: React.FC = () => {
     showRenderingModal,
     setShowRenderingModal
   } = useRecordingContext();
+
+  // FIXED: Initialize Instagram detection on mount
+  useEffect(() => {
+    const isInInstagram = isInstagramBrowser();
+    
+    if (isInInstagram) {
+      addLog('📱 Instagram browser detected - showing overlay');
+      setShowInstagramOverlay(true);
+    } else {
+      addLog('💻 Regular browser detected - proceeding normally');
+      setBypassedInstagram(true);
+    }
+  }, [addLog]);
 
   // Auto-recovery on app focus/visibility
   useEffect(() => {
@@ -175,11 +190,10 @@ const CameraApp: React.FC = () => {
     }, 500);
   }, [downloadVideo, setShowPreview, restoreCameraFeed]);
 
+  // Initialize app when bypassed Instagram check
   useEffect(() => {
-    // Jika sudah lewati Instagram overlay, atau bukan di Instagram browser,
-    // maka inisialisasi aplikasi
     if (bypassedInstagram) {
-      addLog('🚀 App mounted - Instagram check bypassed');
+      addLog('🚀 App initialization starting...');
       initializeApp();
     }
   }, [bypassedInstagram, initializeApp, addLog]);
@@ -202,16 +216,31 @@ const CameraApp: React.FC = () => {
     initializeApp();
   }, [initializeApp, addLog]);
 
-  // Handler untuk ketika pengguna memilih "Lanjutkan di Instagram"
+  // Handler for Instagram overlay
   const handleContinueInInstagram = useCallback(() => {
     addLog('📱 User chose to continue in Instagram browser');
+    setShowInstagramOverlay(false);
     setBypassedInstagram(true);
   }, [addLog]);
 
-  // Jika belum bypass Instagram check, tampilkan overlay terlebih dahulu
+  // FIXED: Show Instagram overlay only when needed
+  if (showInstagramOverlay) {
+    return (
+      <InstagramBrowserOverlay 
+        onContinueAnyway={handleContinueInInstagram} 
+      />
+    );
+  }
+
+  // FIXED: Don't block rendering if not Instagram browser
   if (!bypassedInstagram) {
     return (
-      <InstagramBrowserOverlay onContinueAnyway={handleContinueInInstagram} />
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <LoadingScreen 
+          message="Checking browser compatibility..."
+          subMessage="Please wait..."
+        />
+      </div>
     );
   }
 
