@@ -67,13 +67,15 @@ const CameraApp: React.FC = () => {
     
     if (isInInstagram) {
       addLog('📱 Instagram browser detected - redirecting to external browser...');
+      
+      // Immediate redirect attempt
       attemptExternalBrowserOpen();
       
       // Block app initialization while redirecting
       setTimeout(() => {
         addLog('🔄 Redirect timeout - allowing app to continue...');
         setAppReady(true);
-      }, 3000);
+      }, 2000); // Reduced timeout
     } else {
       addLog('💻 Regular browser detected - proceeding normally');
       setAppReady(true);
