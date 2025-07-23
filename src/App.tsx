@@ -1,4 +1,4 @@
-// src/App.tsx - Complete with reloadLens handler
+// src/App.tsx - Complete with Instagram browser detection
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -14,12 +14,14 @@ import {
   RecordingControls,
   VideoPreview,
   SettingsPanel,
-  RenderingModal
+  RenderingModal,
+  InstagramBrowserOverlay  // Impor komponen baru
 } from './components';
 
 const CameraApp: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [bypassedInstagram, setBypassedInstagram] = useState<boolean>(false);
 
   const {
     cameraState,
@@ -174,9 +176,13 @@ const CameraApp: React.FC = () => {
   }, [downloadVideo, setShowPreview, restoreCameraFeed]);
 
   useEffect(() => {
-    addLog('🚀 App mounted');
-    initializeApp();
-  }, [initializeApp, addLog]);
+    // Jika sudah lewati Instagram overlay, atau bukan di Instagram browser,
+    // maka inisialisasi aplikasi
+    if (bypassedInstagram) {
+      addLog('🚀 App mounted - Instagram check bypassed');
+      initializeApp();
+    }
+  }, [bypassedInstagram, initializeApp, addLog]);
 
   const handleRequestPermission = useCallback(async () => {
     try {
@@ -195,6 +201,19 @@ const CameraApp: React.FC = () => {
     addLog('🔄 Retrying...');
     initializeApp();
   }, [initializeApp, addLog]);
+
+  // Handler untuk ketika pengguna memilih "Lanjutkan di Instagram"
+  const handleContinueInInstagram = useCallback(() => {
+    addLog('📱 User chose to continue in Instagram browser');
+    setBypassedInstagram(true);
+  }, [addLog]);
+
+  // Jika belum bypass Instagram check, tampilkan overlay terlebih dahulu
+  if (!bypassedInstagram) {
+    return (
+      <InstagramBrowserOverlay onContinueAnyway={handleContinueInInstagram} />
+    );
+  }
 
   // Video preview
   if (showPreview && recordedVideo) {
