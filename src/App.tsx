@@ -1,4 +1,4 @@
-// src/App.tsx - FIXED: Instagram browser detection logic
+// src/App.tsx - Direct Instagram redirect without overlay
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -14,16 +14,14 @@ import {
   RecordingControls,
   VideoPreview,
   SettingsPanel,
-  RenderingModal,
-  InstagramBrowserOverlay
+  RenderingModal
 } from './components';
-import { isInstagramBrowser } from './utils/instagramBrowserDetector';
+import { isInstagramBrowser, attemptExternalBrowserOpen } from './utils/instagramBrowserDetector';
 
 const CameraApp: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [bypassedInstagram, setBypassedInstagram] = useState<boolean>(false);
-  const [showInstagramOverlay, setShowInstagramOverlay] = useState<boolean>(false);
+  const [appReady, setAppReady] = useState<boolean>(false);
 
   const {
     cameraState,
@@ -63,16 +61,22 @@ const CameraApp: React.FC = () => {
     setShowRenderingModal
   } = useRecordingContext();
 
-  // FIXED: Initialize Instagram detection on mount
+  // Direct Instagram redirect - no overlay
   useEffect(() => {
     const isInInstagram = isInstagramBrowser();
     
     if (isInInstagram) {
-      addLog('📱 Instagram browser detected - showing overlay');
-      setShowInstagramOverlay(true);
+      addLog('📱 Instagram browser detected - redirecting to external browser...');
+      attemptExternalBrowserOpen();
+      
+      // Block app initialization while redirecting
+      setTimeout(() => {
+        addLog('🔄 Redirect timeout - allowing app to continue...');
+        setAppReady(true);
+      }, 3000);
     } else {
       addLog('💻 Regular browser detected - proceeding normally');
-      setBypassedInstagram(true);
+      setAppReady(true);
     }
   }, [addLog]);
 
@@ -190,13 +194,13 @@ const CameraApp: React.FC = () => {
     }, 500);
   }, [downloadVideo, setShowPreview, restoreCameraFeed]);
 
-  // Initialize app when bypassed Instagram check
+  // Initialize app when ready
   useEffect(() => {
-    if (bypassedInstagram) {
+    if (appReady) {
       addLog('🚀 App initialization starting...');
       initializeApp();
     }
-  }, [bypassedInstagram, initializeApp, addLog]);
+  }, [appReady, initializeApp, addLog]);
 
   const handleRequestPermission = useCallback(async () => {
     try {
@@ -216,29 +220,13 @@ const CameraApp: React.FC = () => {
     initializeApp();
   }, [initializeApp, addLog]);
 
-  // Handler for Instagram overlay
-  const handleContinueInInstagram = useCallback(() => {
-    addLog('📱 User chose to continue in Instagram browser');
-    setShowInstagramOverlay(false);
-    setBypassedInstagram(true);
-  }, [addLog]);
-
-  // FIXED: Show Instagram overlay only when needed
-  if (showInstagramOverlay) {
-    return (
-      <InstagramBrowserOverlay 
-        onContinueAnyway={handleContinueInInstagram} 
-      />
-    );
-  }
-
-  // FIXED: Don't block rendering if not Instagram browser
-  if (!bypassedInstagram) {
+  // Show loading while checking/redirecting
+  if (!appReady) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <LoadingScreen 
-          message="Checking browser compatibility..."
-          subMessage="Please wait..."
+          message="Web AR Netramaya"
+          subMessage="Checking browser compatibility..."
         />
       </div>
     );
