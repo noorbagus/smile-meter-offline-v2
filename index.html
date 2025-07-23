@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" href="/images/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Web AR Netramaya</title>
     
@@ -11,6 +11,10 @@
     <meta property="og:title" content="Web AR Netramaya" />
     <meta property="og:description" content="Experience AR effects with Snap Camera Kit" />
     <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://webar-ig.vercel.app/images/webar.png" />
+    <meta property="og:url" content="https://webar-ig.vercel.app/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://webar-ig.vercel.app/images/webar.png" />
     
     <!-- PWA Meta -->
     <meta name="theme-color" content="#000000" />
@@ -40,6 +44,10 @@
                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         }
         
+        function isAndroidDevice() {
+          return /Android/i.test(navigator.userAgent);
+        }
+        
         function hasRedirectAttempted() {
           try {
             const attempted = sessionStorage.getItem('instagram_redirect_attempted');
@@ -61,11 +69,63 @@
           }
         }
         
+        function redirectToSafari(targetUrl) {
+          // Safari redirect sequence
+          setTimeout(() => {
+            const safariUrl = `x-safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
+            console.log('🍎 Safari scheme 1:', safariUrl);
+            window.location.href = safariUrl;
+          }, 100);
+          
+          setTimeout(() => {
+            const altSafari = `safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
+            console.log('🦁 Safari scheme 2:', altSafari);
+            window.location.href = altSafari;
+          }, 400);
+          
+          setTimeout(() => {
+            const tabScheme = `com-apple-mobilesafari-tab:${targetUrl}`;
+            console.log('📱 Mobile Safari tab:', tabScheme);
+            window.location.href = tabScheme;
+          }, 800);
+        }
+        
+        function redirectToChrome(targetUrl) {
+          const cleanDomain = targetUrl.replace(/^https?:\/\//, '');
+          
+          // Browser fallback chain
+          const browsers = [
+            { name: 'Chrome', package: 'com.android.chrome' },
+            { name: 'Samsung Internet', package: 'com.sec.android.app.sbrowser' },
+            { name: 'Firefox', package: 'org.mozilla.firefox' },
+            { name: 'Edge', package: 'com.microsoft.emmx' },
+            { name: 'Opera', package: 'com.opera.browser' },
+            { name: 'Brave', package: 'com.brave.browser' }
+          ];
+          
+          // Try specific browsers
+          browsers.forEach((browser, index) => {
+            setTimeout(() => {
+              const intent = `intent://${cleanDomain}#Intent;scheme=https;package=${browser.package};end`;
+              console.log(`🌐 ${browser.name} intent:`, intent);
+              window.location.href = intent;
+            }, 100 + (index * 200));
+          });
+          
+          // Generic browser intent
+          setTimeout(() => {
+            const genericIntent = `intent://${cleanDomain}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
+            console.log('🔗 Generic browser intent:', genericIntent);
+            window.location.href = genericIntent;
+          }, 1500);
+        }
+        
         const isInstagram = isInstagramBrowser();
         const isIOS = isIOSDevice();
+        const isAndroid = isAndroidDevice();
         const hasAttempted = hasRedirectAttempted();
         
-        console.log('🔍 Browser check:', { isInstagram, isIOS, hasAttempted, ua: navigator.userAgent });
+        console.log('🔍 Browser check:', { isInstagram, isIOS, isAndroid, hasAttempted, ua: navigator.userAgent });
         
         if (isInstagram && !hasAttempted) {
           console.log('🚀 INSTANT Instagram redirect starting...');
@@ -95,25 +155,16 @@
             "></div>
           `;
           
-          // Aggressive Safari redirect sequence
-          setTimeout(() => {
-            const safariUrl = `x-safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
-            console.log('🍎 Safari scheme 1:', safariUrl);
-            window.location.href = safariUrl;
-          }, 100);
+          // Platform-specific redirect
+          if (isIOS) {
+            redirectToSafari(targetUrl);
+          } else if (isAndroid) {
+            redirectToChrome(targetUrl);
+          } else {
+            redirectToChrome(targetUrl); // Desktop fallback
+          }
           
-          setTimeout(() => {
-            const altSafari = `safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
-            console.log('🦁 Safari scheme 2:', altSafari);
-            window.location.href = altSafari;
-          }, 400);
-          
-          setTimeout(() => {
-            const tabScheme = `com-apple-mobilesafari-tab:${targetUrl}`;
-            console.log('📱 Mobile Safari tab:', tabScheme);
-            window.location.href = tabScheme;
-          }, 800);
-          
+          // Universal fallbacks
           setTimeout(() => {
             try {
               console.log('🔗 Window.open attempt');
@@ -121,12 +172,12 @@
             } catch (e) {
               console.warn('Window.open failed');
             }
-          }, 1200);
+          }, 2000);
           
           setTimeout(() => {
             console.log('🔄 Direct location change');
             window.location.href = targetUrl;
-          }, 2000);
+          }, 2500);
           
           // Don't load React if redirecting
           return;
