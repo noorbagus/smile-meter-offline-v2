@@ -1,4 +1,4 @@
-// src/App.tsx - Direct Instagram redirect without overlay
+// src/App.tsx - Complete with aggressive Instagram redirect
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -16,7 +16,7 @@ import {
   SettingsPanel,
   RenderingModal
 } from './components';
-import { isInstagramBrowser, attemptExternalBrowserOpen } from './utils/instagramBrowserDetector';
+import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 
 const CameraApp: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
@@ -61,23 +61,19 @@ const CameraApp: React.FC = () => {
     setShowRenderingModal
   } = useRecordingContext();
 
-  // Direct Instagram redirect - no overlay
+  // Aggressive Instagram redirect check
   useEffect(() => {
-    const isInInstagram = isInstagramBrowser();
+    const shouldRedirect = checkAndRedirect();
     
-    if (isInInstagram) {
-      addLog('📱 Instagram browser detected - redirecting to external browser...');
-      
-      // Immediate redirect attempt
-      attemptExternalBrowserOpen();
-      
-      // Block app initialization while redirecting
+    if (shouldRedirect) {
+      addLog('📱 Instagram redirect in progress...');
+      // Block app initialization during redirect
       setTimeout(() => {
-        addLog('🔄 Redirect timeout - allowing app to continue...');
+        addLog('⏰ Redirect timeout - continuing with app');
         setAppReady(true);
-      }, 2000); // Reduced timeout
+      }, 3000);
     } else {
-      addLog('💻 Regular browser detected - proceeding normally');
+      addLog('✅ Browser check complete - initializing app');
       setAppReady(true);
     }
   }, [addLog]);
@@ -222,14 +218,39 @@ const CameraApp: React.FC = () => {
     initializeApp();
   }, [initializeApp, addLog]);
 
+  // Instagram redirect retry button
+  const handleRetryRedirect = useCallback(() => {
+    addLog('📱 Manual Instagram redirect retry...');
+    retryRedirect();
+  }, [addLog]);
+
   // Show loading while checking/redirecting
   if (!appReady) {
+    const isInInstagram = isInstagramBrowser();
+    
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <LoadingScreen 
-          message="Web AR Netramaya"
-          subMessage="Checking browser compatibility..."
-        />
+        {isInInstagram ? (
+          <div className="text-center text-white p-6">
+            <div className="text-6xl mb-6">🚀</div>
+            <h2 className="text-2xl font-bold mb-4">Opening in Safari...</h2>
+            <p className="text-white/70 mb-6">For the best AR experience</p>
+            <button
+              onClick={handleRetryRedirect}
+              className="bg-blue-500 hover:bg-blue-600 px-6 py-3 rounded-lg text-white font-medium"
+            >
+              Try Again
+            </button>
+            <p className="text-xs text-white/50 mt-4">
+              If redirect fails, manually copy URL to Safari
+            </p>
+          </div>
+        ) : (
+          <LoadingScreen 
+            message="Web AR Netramaya"
+            subMessage="Checking browser compatibility..."
+          />
+        )}
       </div>
     );
   }

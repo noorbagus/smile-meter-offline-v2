@@ -1,182 +1,185 @@
-// src/utils/instagramBrowserDetector.ts
+// src/utils/instagramBrowserDetector.ts - AGGRESSIVE REDIRECT VERSION
 
 /**
- * Deteksi apakah di in-app browser Instagram dan apakah di iOS
+ * Deteksi Instagram browser dengan metode yang lebih agresif
  */
-export const isInstagramIOSBrowser = (): boolean => {
+export const isInstagramBrowser = (): boolean => {
     const userAgent = navigator.userAgent || "";
-    return userAgent.includes("Instagram") && 
-           (userAgent.includes("iPhone") || userAgent.includes("iPad") || userAgent.includes("iPod"));
+    // Deteksi berbagai variasi Instagram browser
+    return userAgent.includes("Instagram") || 
+           userAgent.includes("FBAN") || 
+           userAgent.includes("FBAV") ||
+           userAgent.includes("com.burbn.instagram");
   };
   
   /**
-   * Deteksi apakah di in-app browser Instagram pada platform apapun
+   * Deteksi iOS dengan lebih akurat
    */
-  export const isInstagramBrowser = (): boolean => {
+  export const isIOSDevice = (): boolean => {
     const userAgent = navigator.userAgent || "";
-    return userAgent.includes("Instagram");
+    return /iPad|iPhone|iPod/.test(userAgent) || 
+           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   };
   
   /**
-   * Deteksi apakah ini halaman yang di-reload setelah redirect
+   * Cek apakah sudah pernah redirect untuk avoid loop
    */
-  export const isRedirectReturn = (): boolean => {
+  export const hasRedirectAttempted = (): boolean => {
     try {
-      return sessionStorage.getItem('instagramRedirectAttempted') === 'true';
+      const attempted = sessionStorage.getItem('instagram_redirect_attempted');
+      const timestamp = sessionStorage.getItem('instagram_redirect_time');
+      
+      if (!attempted || !timestamp) return false;
+      
+      // Reset after 30 seconds
+      const timeDiff = Date.now() - parseInt(timestamp);
+      if (timeDiff > 30000) {
+        sessionStorage.removeItem('instagram_redirect_attempted');
+        sessionStorage.removeItem('instagram_redirect_time');
+        return false;
+      }
+      
+      return true;
     } catch (e) {
       return false;
     }
   };
   
   /**
-   * Fungsi untuk membuka di Safari di iOS - Aggressive version
+   * AGGRESSIVE Safari redirect with multiple methods
    */
-  export const openInSafari = (url: string): void => {
-    // Jika ini adalah reload setelah redirect gagal, jangan redirect lagi
-    if (isRedirectReturn()) {
-      console.log("Halaman sudah pernah di-redirect, menghindari redirect loop");
-      return;
-    }
-    
-    // Set redirection attempt flag
+  export const redirectToSafari = (url: string = window.location.href): void => {
     try {
-      sessionStorage.setItem('instagramRedirectAttempted', 'true');
-      sessionStorage.setItem('redirectTimestamp', Date.now().toString());
+      sessionStorage.setItem('instagram_redirect_attempted', 'true');
+      sessionStorage.setItem('instagram_redirect_time', Date.now().toString());
     } catch (e) {
       // Ignore storage errors
     }
   
-    // Tambahkan parameter untuk menghindari cache
-    const noCacheUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+    console.log('🚀 AGGRESSIVE Safari redirect starting...');
     
-    // Gunakan x-safari-https:// URL scheme untuk iOS (yang paling reliable)
-    const safariScheme = `x-safari-https://${noCacheUrl.replace(/^https?:\/\//, '')}`;
+    // Add cache buster
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const cacheBuster = `?_t=${Date.now()}&_src=instagram`;
+    const targetUrl = cleanUrl + cacheBuster;
     
-    // Tambahkan visual feedback
-    try {
-      const redirectMsg = document.createElement('div');
-      redirectMsg.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);color:white;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:sans-serif;';
-      redirectMsg.innerHTML = '<div style="text-align:center;padding:20px;"><div style="font-size:20px;margin-bottom:10px;">Membuka di Safari...</div><div style="opacity:0.7;font-size:14px;">Jika halaman tidak terbuka otomatis, klik "Buka" saat diminta</div></div>';
-      document.body.appendChild(redirectMsg);
-    } catch (e) {
-      // Ignore DOM errors
-    }
+    // Show immediate feedback
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.95);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999999;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    `;
+    overlay.innerHTML = `
+      <div style="text-align: center; padding: 40px;">
+        <div style="font-size: 48px; margin-bottom: 20px;">🚀</div>
+        <div style="font-size: 24px; font-weight: bold; margin-bottom: 16px;">
+          Opening in Safari...
+        </div>
+        <div style="font-size: 16px; opacity: 0.8; margin-bottom: 20px;">
+          For the best AR experience
+        </div>
+        <div style="font-size: 14px; opacity: 0.6;">
+          If nothing happens, manually copy the URL to Safari
+        </div>
+      </div>
+    `;
     
-    // Coba dengan aggressive redirect (langsung tanpa delay)
+    document.body.appendChild(overlay);
+    
+    // Method 1: Direct Safari scheme (most reliable)
     setTimeout(() => {
-      window.location.href = safariScheme;
+      const safariUrl = `x-safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
+      console.log('🍎 Trying Safari scheme:', safariUrl);
+      window.location.href = safariUrl;
+    }, 100);
+    
+    // Method 2: Alternative Safari scheme
+    setTimeout(() => {
+      const altSafari = `safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
+      console.log('🦁 Trying alternative Safari scheme:', altSafari);
+      window.location.href = altSafari;
     }, 500);
     
-    // Fallback #1 - setelah beberapa saat jika metode utama gagal
+    // Method 3: Mobile Safari tab scheme
     setTimeout(() => {
-      const legacyScheme = `com-apple-mobilesafari-tab:${noCacheUrl}`;
-      window.location.href = legacyScheme;
-    }, 1500);
-    
-    // Fallback #2 - gunakan iframe technique (dapat menghindari beberapa rintangan)
-    setTimeout(() => {
-      try {
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = safariScheme;
-        document.body.appendChild(iframe);
-        setTimeout(() => document.body.removeChild(iframe), 500);
-      } catch (e) {
-        console.error('Safari iframe redirect failed', e);
-      }
-    }, 2500);
-    
-    // Fallback #3 - mencoba window.open sebagai metode terakhir
-    setTimeout(() => {
-      try {
-        window.open(safariScheme, '_system');
-      } catch (e) {
-        console.error('Safari window.open redirect failed', e);
-      }
-    }, 3500);
-  };
-  
-  /**
-   * Fungsi untuk membuka di browser eksternal pada Android
-   */
-  export const openInExternalBrowser = (url: string): void => {
-    // Untuk Android, kita dapat mencoba beberapa metode
-    
-    // Set redirection attempt flag
-    try {
-      sessionStorage.setItem('instagramRedirectAttempted', 'true');
-      sessionStorage.setItem('redirectTimestamp', Date.now().toString());
-    } catch (e) {
-      // Ignore storage errors
-    }
-    
-    // Tambahkan parameter untuk menghindari cache
-    const noCacheUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-    
-    // Method 1: Direct location change
-    window.location.href = noCacheUrl;
-    
-    // Method 2: Try window.open with _system
-    setTimeout(() => {
-      try {
-        window.open(noCacheUrl, '_system');
-      } catch (e) {
-        console.error('Android external browser redirect failed', e);
-      }
+      const tabScheme = `com-apple-mobilesafari-tab:${targetUrl}`;
+      console.log('📱 Trying mobile Safari tab:', tabScheme);
+      window.location.href = tabScheme;
     }, 1000);
     
-    // Method 3: Try with an intent URL for Chrome
+    // Method 4: Try window.open with _system
     setTimeout(() => {
       try {
-        const chromeIntent = `intent://${noCacheUrl.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=com.android.chrome;end`;
-        window.location.href = chromeIntent;
+        console.log('🔗 Trying window.open _system');
+        window.open(targetUrl, '_system');
       } catch (e) {
-        console.error('Android Chrome intent redirect failed', e);
+        console.log('❌ window.open failed');
       }
-    }, 2000);
+    }, 1500);
+    
+    // Method 5: Direct location change as last resort
+    setTimeout(() => {
+      console.log('🔄 Last resort: direct location change');
+      window.location.href = targetUrl;
+    }, 2500);
+    
+    // Remove overlay after attempts
+    setTimeout(() => {
+      if (document.body.contains(overlay)) {
+        overlay.remove();
+      }
+    }, 4000);
   };
   
   /**
-   * Coba membuka URL di browser eksternal berdasarkan platform dengan pendekatan agresif
+   * Check if we should redirect and do it immediately
    */
-  export const attemptExternalBrowserOpen = (url: string = window.location.href): void => {
-    // Jika ini adalah reload setelah redirect gagal, jangan redirect lagi
-    if (isRedirectReturn()) {
-      console.log("Halaman sudah pernah di-redirect, menghindari redirect loop");
-      return;
+  export const checkAndRedirect = (): boolean => {
+    const isInstagram = isInstagramBrowser();
+    const isIOS = isIOSDevice();
+    const hasAttempted = hasRedirectAttempted();
+    
+    console.log('🔍 Redirect check:', { isInstagram, isIOS, hasAttempted });
+    
+    if (isInstagram && !hasAttempted) {
+      console.log('📱 Instagram detected - starting redirect...');
+      redirectToSafari();
+      return true; // Redirecting
     }
     
-    const userAgent = navigator.userAgent || "";
-    const isIOS = userAgent.includes("iPhone") || userAgent.includes("iPad") || userAgent.includes("iPod");
-    
-    // Log untuk debugging
-    console.log(`Attempting external browser redirect. iOS: ${isIOS}, URL: ${url}`);
-    
-    if (isIOS) {
-      openInSafari(url);
-    } else {
-      openInExternalBrowser(url);
-    }
+    return false; // Not redirecting
   };
   
   /**
-   * Reset redirect flags untuk mencoba redirect lagi
+   * Manual retry function
    */
-  export const resetRedirectFlags = (): void => {
+  export const retryRedirect = (): void => {
     try {
-      sessionStorage.removeItem('instagramRedirectAttempted');
-      sessionStorage.removeItem('redirectTimestamp');
+      sessionStorage.removeItem('instagram_redirect_attempted');
+      sessionStorage.removeItem('instagram_redirect_time');
     } catch (e) {
-      // Ignore storage errors
+      // Ignore
     }
+    
+    redirectToSafari();
   };
   
+  // Export for manual use
   export default {
-    isInstagramIOSBrowser,
     isInstagramBrowser,
-    isRedirectReturn,
-    openInSafari,
-    openInExternalBrowser,
-    attemptExternalBrowserOpen,
-    resetRedirectFlags
+    isIOSDevice,
+    hasRedirectAttempted,
+    redirectToSafari,
+    checkAndRedirect,
+    retryRedirect
   };

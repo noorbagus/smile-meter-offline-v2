@@ -1,40 +1,190 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/images/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-    <!-- Instagram Redirect Script - dijalankan sebelum React dimuat -->
-    <script src="/instagram-redirect.js"></script>
-    
-    <!-- Primary Meta Tags -->
     <title>Web AR Netramaya</title>
-    <meta name="title" content="Web AR Netramaya" />
-    <meta name="description" content="AR Camera with Instagram sharing - Create amazing AR videos with Snap Camera Kit" />
     
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://webar-ig.vercel.app/" />
+    <!-- Meta tags for social sharing -->
+    <meta name="description" content="Experience AR effects with Snap Camera Kit" />
     <meta property="og:title" content="Web AR Netramaya" />
-    <meta property="og:description" content="AR Camera with Instagram sharing - Create amazing AR videos with Snap Camera Kit" />
-    <meta property="og:image" content="https://webar-ig.vercel.app/images/webar.png" />
+    <meta property="og:description" content="Experience AR effects with Snap Camera Kit" />
+    <meta property="og:type" content="website" />
     
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://webar-ig.vercel.app/" />
-    <meta property="twitter:title" content="Web AR Netramaya" />
-    <meta property="twitter:description" content="AR Camera with Instagram sharing - Create amazing AR videos with Snap Camera Kit" />
-    <meta property="twitter:image" content="https://webar-ig.vercel.app/images/webar.png" />
+    <!-- PWA Meta -->
+    <meta name="theme-color" content="#000000" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     
-    <!-- WhatsApp/Telegram -->
-    <meta property="og:site_name" content="Web AR Netramaya" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:type" content="image/png" />
+    <!-- Camera and microphone permissions -->
+    <meta http-equiv="Permissions-Policy" content="camera=*, microphone=*" />
   </head>
   <body>
     <div id="root"></div>
+    
+    <!-- AGGRESSIVE INSTAGRAM REDIRECT SCRIPT -->
+    <script>
+      // Immediate redirect check before React loads
+      (function() {
+        // Enhanced Instagram detection
+        function isInstagramBrowser() {
+          const ua = navigator.userAgent || "";
+          return /Instagram|FBAN|FBAV|com\.burbn\.instagram/i.test(ua);
+        }
+        
+        function isIOSDevice() {
+          const ua = navigator.userAgent || "";
+          return /iPad|iPhone|iPod/.test(ua) || 
+                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        }
+        
+        function hasRedirectAttempted() {
+          try {
+            const attempted = sessionStorage.getItem('instagram_redirect_attempted');
+            const timestamp = sessionStorage.getItem('instagram_redirect_time');
+            
+            if (!attempted || !timestamp) return false;
+            
+            // Reset after 30 seconds
+            const timeDiff = Date.now() - parseInt(timestamp);
+            if (timeDiff > 30000) {
+              sessionStorage.removeItem('instagram_redirect_attempted');
+              sessionStorage.removeItem('instagram_redirect_time');
+              return false;
+            }
+            
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }
+        
+        const isInstagram = isInstagramBrowser();
+        const isIOS = isIOSDevice();
+        const hasAttempted = hasRedirectAttempted();
+        
+        console.log('🔍 Browser check:', { isInstagram, isIOS, hasAttempted, ua: navigator.userAgent });
+        
+        if (isInstagram && !hasAttempted) {
+          console.log('🚀 INSTANT Instagram redirect starting...');
+          
+          // Set redirect flags
+          try {
+            sessionStorage.setItem('instagram_redirect_attempted', 'true');
+            sessionStorage.setItem('instagram_redirect_time', Date.now().toString());
+          } catch (e) {
+            console.warn('Storage unavailable');
+          }
+          
+          // Build target URL with cache buster
+          const baseUrl = window.location.href.split('?')[0].split('#')[0];
+          const targetUrl = baseUrl + (baseUrl.includes('?') ? '&' : '?') + '_t=' + Date.now() + '&_src=instagram';
+          
+          // Show immediate loading screen
+          document.body.innerHTML = `
+            <div style="
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              z-index: 999999;
+            ">
+              <div style="text-align: center; padding: 40px;">
+                <div style="font-size: 64px; margin-bottom: 24px; animation: bounce 1s infinite;">🚀</div>
+                <div style="font-size: 28px; font-weight: bold; margin-bottom: 16px;">
+                  Opening in Safari...
+                </div>
+                <div style="font-size: 18px; opacity: 0.9; margin-bottom: 24px;">
+                  For the best AR experience
+                </div>
+                <div style="font-size: 14px; opacity: 0.7; max-width: 300px; margin: 0 auto;">
+                  If nothing happens, manually copy the URL to Safari browser
+                </div>
+                <div style="
+                  margin-top: 32px; 
+                  width: 200px; 
+                  height: 4px; 
+                  background: rgba(255,255,255,0.3); 
+                  border-radius: 2px; 
+                  overflow: hidden;
+                  margin-left: auto;
+                  margin-right: auto;
+                ">
+                  <div style="
+                    width: 50%; 
+                    height: 100%; 
+                    background: white; 
+                    border-radius: 2px;
+                    animation: progress 2s ease-in-out infinite;
+                  "></div>
+                </div>
+              </div>
+            </div>
+            <style>
+              @keyframes bounce {
+                0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+                40% { transform: translateY(-20px); }
+                60% { transform: translateY(-10px); }
+              }
+              @keyframes progress {
+                0% { transform: translateX(-100%); }
+                50% { transform: translateX(0%); }
+                100% { transform: translateX(100%); }
+              }
+            </style>
+          `;
+          
+          // Aggressive Safari redirect sequence
+          setTimeout(() => {
+            const safariUrl = `x-safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
+            console.log('🍎 Safari scheme 1:', safariUrl);
+            window.location.href = safariUrl;
+          }, 100);
+          
+          setTimeout(() => {
+            const altSafari = `safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
+            console.log('🦁 Safari scheme 2:', altSafari);
+            window.location.href = altSafari;
+          }, 400);
+          
+          setTimeout(() => {
+            const tabScheme = `com-apple-mobilesafari-tab:${targetUrl}`;
+            console.log('📱 Mobile Safari tab:', tabScheme);
+            window.location.href = tabScheme;
+          }, 800);
+          
+          setTimeout(() => {
+            try {
+              console.log('🔗 Window.open attempt');
+              window.open(targetUrl, '_system');
+            } catch (e) {
+              console.warn('Window.open failed');
+            }
+          }, 1200);
+          
+          setTimeout(() => {
+            console.log('🔄 Direct location change');
+            window.location.href = targetUrl;
+          }, 2000);
+          
+          // Don't load React if redirecting
+          return;
+        }
+        
+        console.log('✅ No redirect needed, loading app normally');
+      })();
+    </script>
+    
+    <!-- React app -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
