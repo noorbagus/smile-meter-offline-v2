@@ -1,11 +1,17 @@
-// src/utils/instagramBrowserDetector.ts - AGGRESSIVE REDIRECT VERSION
+// src/utils/instagramBrowserDetector.ts - Updated with Android Chrome deep link
 
 /**
- * Deteksi Instagram browser dengan metode yang lebih agresif
+ * Deteksi Android browser
  */
-export const isInstagramBrowser = (): boolean => {
+export const isAndroidDevice = (): boolean => {
+    return /Android/i.test(navigator.userAgent);
+  };
+  
+  /**
+   * Deteksi Instagram browser dengan metode yang lebih agresif
+   */
+  export const isInstagramBrowser = (): boolean => {
     const userAgent = navigator.userAgent || "";
-    // Deteksi berbagai variasi Instagram browser
     return userAgent.includes("Instagram") || 
            userAgent.includes("FBAN") || 
            userAgent.includes("FBAV") ||
@@ -46,6 +52,68 @@ export const isInstagramBrowser = (): boolean => {
   };
   
   /**
+   * Android browser redirect with fallback chain
+   */
+  export const redirectToChrome = (url: string = window.location.href): void => {
+    try {
+      sessionStorage.setItem('instagram_redirect_attempted', 'true');
+      sessionStorage.setItem('instagram_redirect_time', Date.now().toString());
+    } catch (e) {
+      // Ignore storage errors
+    }
+  
+    console.log('🚀 Android browser redirect starting...');
+    
+    // Clean URL and add cache buster
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const cacheBuster = `?_t=${Date.now()}&_src=instagram_android`;
+    const targetUrl = cleanUrl + cacheBuster;
+    const cleanDomain = targetUrl.replace(/^https?:\/\//, '');
+    
+    // Browser fallback chain
+    const browsers = [
+      { name: 'Chrome', package: 'com.android.chrome' },
+      { name: 'Samsung Internet', package: 'com.sec.android.app.sbrowser' },
+      { name: 'Firefox', package: 'org.mozilla.firefox' },
+      { name: 'Edge', package: 'com.microsoft.emmx' },
+      { name: 'Opera', package: 'com.opera.browser' },
+      { name: 'Brave', package: 'com.brave.browser' }
+    ];
+    
+    // Try specific browsers first
+    browsers.forEach((browser, index) => {
+      setTimeout(() => {
+        const intent = `intent://${cleanDomain}#Intent;scheme=https;package=${browser.package};end`;
+        console.log(`🌐 ${browser.name} intent:`, intent);
+        window.location.href = intent;
+      }, 100 + (index * 200));
+    });
+    
+    // Generic browser intent (will use default browser)
+    setTimeout(() => {
+      const genericIntent = `intent://${cleanDomain}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
+      console.log('🔗 Generic browser intent:', genericIntent);
+      window.location.href = genericIntent;
+    }, 1500);
+    
+    // Window.open fallback
+    setTimeout(() => {
+      try {
+        console.log('📱 Window.open attempt');
+        window.open(targetUrl, '_system');
+      } catch (e) {
+        console.log('❌ window.open failed');
+      }
+    }, 2000);
+    
+    // Direct location change (last resort)
+    setTimeout(() => {
+      console.log('🔄 Direct location change');
+      window.location.href = targetUrl;
+    }, 2500);
+  };
+  
+  /**
    * AGGRESSIVE Safari redirect with multiple methods
    */
   export const redirectToSafari = (url: string = window.location.href): void => {
@@ -56,104 +124,58 @@ export const isInstagramBrowser = (): boolean => {
       // Ignore storage errors
     }
   
-    console.log('🚀 AGGRESSIVE Safari redirect starting...');
+    console.log('🚀 Safari redirect starting...');
     
     // Add cache buster
     const cleanUrl = url.split('?')[0].split('#')[0];
-    const cacheBuster = `?_t=${Date.now()}&_src=instagram`;
+    const cacheBuster = `?_t=${Date.now()}&_src=instagram_ios`;
     const targetUrl = cleanUrl + cacheBuster;
-    
-    // Show immediate feedback
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.95);
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 999999;
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    `;
-    overlay.innerHTML = `
-      <div style="text-align: center; padding: 40px;">
-        <div style="font-size: 48px; margin-bottom: 20px;">🚀</div>
-        <div style="font-size: 24px; font-weight: bold; margin-bottom: 16px;">
-          Opening in Safari...
-        </div>
-        <div style="font-size: 16px; opacity: 0.8; margin-bottom: 20px;">
-          For the best AR experience
-        </div>
-        <div style="font-size: 14px; opacity: 0.6;">
-          If nothing happens, manually copy the URL to Safari
-        </div>
-      </div>
-    `;
-    
-    document.body.appendChild(overlay);
     
     // Method 1: Direct Safari scheme (most reliable)
     setTimeout(() => {
       const safariUrl = `x-safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
-      console.log('🍎 Trying Safari scheme:', safariUrl);
+      console.log('🍎 Safari scheme:', safariUrl);
       window.location.href = safariUrl;
     }, 100);
     
     // Method 2: Alternative Safari scheme
     setTimeout(() => {
       const altSafari = `safari-https://${targetUrl.replace(/^https?:\/\//, '')}`;
-      console.log('🦁 Trying alternative Safari scheme:', altSafari);
+      console.log('🦁 Alternative Safari:', altSafari);
       window.location.href = altSafari;
-    }, 500);
+    }, 400);
     
     // Method 3: Mobile Safari tab scheme
     setTimeout(() => {
       const tabScheme = `com-apple-mobilesafari-tab:${targetUrl}`;
-      console.log('📱 Trying mobile Safari tab:', tabScheme);
+      console.log('📱 Mobile Safari tab:', tabScheme);
       window.location.href = tabScheme;
-    }, 1000);
-    
-    // Method 4: Try window.open with _system
-    setTimeout(() => {
-      try {
-        console.log('🔗 Trying window.open _system');
-        window.open(targetUrl, '_system');
-      } catch (e) {
-        console.log('❌ window.open failed');
-      }
-    }, 1500);
-    
-    // Method 5: Direct location change as last resort
-    setTimeout(() => {
-      console.log('🔄 Last resort: direct location change');
-      window.location.href = targetUrl;
-    }, 2500);
-    
-    // Remove overlay after attempts
-    setTimeout(() => {
-      if (document.body.contains(overlay)) {
-        overlay.remove();
-      }
-    }, 4000);
+    }, 800);
   };
   
   /**
-   * Check if we should redirect and do it immediately
+   * Smart redirect based on platform
    */
   export const checkAndRedirect = (): boolean => {
     const isInstagram = isInstagramBrowser();
+    const isAndroid = isAndroidDevice();
     const isIOS = isIOSDevice();
     const hasAttempted = hasRedirectAttempted();
     
-    console.log('🔍 Redirect check:', { isInstagram, isIOS, hasAttempted });
+    console.log('🔍 Platform check:', { isInstagram, isAndroid, isIOS, hasAttempted });
     
     if (isInstagram && !hasAttempted) {
-      console.log('📱 Instagram detected - starting redirect...');
-      redirectToSafari();
+      console.log('📱 Instagram detected - starting platform-specific redirect...');
+      
+      if (isAndroid) {
+        redirectToChrome();
+      } else if (isIOS) {
+        redirectToSafari();
+      } else {
+        // Desktop fallback
+        redirectToChrome();
+      }
+      
       return true; // Redirecting
     }
     
@@ -171,15 +193,26 @@ export const isInstagramBrowser = (): boolean => {
       // Ignore
     }
     
-    redirectToSafari();
+    const isAndroid = isAndroidDevice();
+    const isIOS = isIOSDevice();
+    
+    if (isAndroid) {
+      redirectToChrome();
+    } else if (isIOS) {
+      redirectToSafari();
+    } else {
+      redirectToChrome();
+    }
   };
   
   // Export for manual use
   export default {
     isInstagramBrowser,
     isIOSDevice,
+    isAndroidDevice,
     hasRedirectAttempted,
     redirectToSafari,
+    redirectToChrome,
     checkAndRedirect,
     retryRedirect
   };
