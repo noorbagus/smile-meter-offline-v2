@@ -272,7 +272,7 @@ const CameraApp: React.FC = () => {
         {isInInstagram ? (
           <div className="text-center text-white p-6">
             <div className="text-6xl mb-6">🚀</div>
-            <h2 className="text-2xl font-bold mb-4">Opening in Safari...</h2>
+            <h2 className="text-2xl font-bold mb-4">Opening in Safari..</h2>
             <p className="text-white/70 mb-6">For the best AR experience</p>
             <button
               onClick={handleRetryRedirect}
