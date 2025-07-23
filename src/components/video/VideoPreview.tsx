@@ -51,22 +51,8 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           
           <div className="w-10" />
         </div>
+
         
-        {/* Platform & Compatibility indicators */}
-        <div className="flex justify-center mt-2 space-x-2 text-xs">
-          <span className="px-2 py-1 rounded bg-blue-500/20 text-blue-300">
-            {platform}
-          </span>
-          <span className={`px-2 py-1 rounded ${compatibility.instagram ? 'bg-pink-500/20 text-pink-300' : 'bg-gray-500/20 text-gray-400'}`}>
-            IG {compatibility.instagram ? '✓' : '✗'}
-          </span>
-          <span className={`px-2 py-1 rounded ${compatibility.tiktok ? 'bg-black/20 text-white' : 'bg-gray-500/20 text-gray-400'}`}>
-            TT {compatibility.tiktok ? '✓' : '✗'}
-          </span>
-          <span className={`px-2 py-1 rounded ${compatibility.youtube ? 'bg-red-500/20 text-red-300' : 'bg-gray-500/20 text-gray-400'}`}>
-            YT {compatibility.youtube ? '✓' : '✗'}
-          </span>
-        </div>
       </div>
 
       {/* Video Player */}
@@ -101,12 +87,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           />
         </div>
         
-        {/* Info */}
-        <div className="text-center mt-3">
-          <p className="text-white/60 text-xs">
-            {platform} MP4 • {duration}s • Instagram Ready
-          </p>
-        </div>
+
       </div>
     </div>
   );
