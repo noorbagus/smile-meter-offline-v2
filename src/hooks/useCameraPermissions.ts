@@ -1,4 +1,4 @@
-// src/hooks/useCameraPermissions.ts
+// src/hooks/useCameraPermissions.ts - Fixed with proper audio support
 import { useState, useCallback } from 'react';
 
 export type PermissionState = 'checking' | 'granted' | 'denied' | 'prompt';
@@ -47,7 +47,7 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
   const checkPermissionAPI = useCallback(async (): Promise<boolean> => {
     if (!navigator.permissions) {
       addLog('⚠️ Permissions API not available, will prompt on getUserMedia');
-      return true; // Continue to getUserMedia
+      return true;
     }
 
     try {
@@ -70,11 +70,11 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
         return true;
       } else {
         setPermissionState('prompt');
-        return true; // Will prompt when getUserMedia is called
+        return true;
       }
     } catch (permErr) {
       addLog(`⚠️ Permission query failed: ${permErr}`);
-      return true; // Continue to getUserMedia attempt
+      return true;
     }
   }, [addLog]);
 
@@ -83,21 +83,11 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       addLog('🔍 Checking camera permissions...');
       setErrorInfo(null);
 
-      // Step 1: Check HTTPS
-      if (!checkHTTPS()) {
-        return false;
-      }
+      if (!checkHTTPS()) return false;
+      if (!checkMediaDeviceSupport()) return false;
 
-      // Step 2: Check media device support
-      if (!checkMediaDeviceSupport()) {
-        return false;
-      }
-
-      // Step 3: Check permission API
       const permissionOK = await checkPermissionAPI();
-      if (!permissionOK) {
-        return false;
-      }
+      if (!permissionOK) return false;
 
       addLog('✅ Permission checks passed');
       return true;
@@ -118,18 +108,54 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
     includeAudio: boolean = true
   ): Promise<MediaStream | null> => {
     try {
-      addLog('📸 Requesting camera stream...');
+      addLog('📸 Requesting camera stream with audio...');
       
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const constraints: MediaStreamConstraints = {
         video: { 
           facingMode,
           width: { ideal: 1280, min: 640 },
           height: { ideal: 720, min: 480 }
         },
-        audio: includeAudio
+        // CRITICAL FIX: Proper audio constraints
+        audio: includeAudio ? {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 2 }
+        } : false
+      };
+
+      addLog(`🎤 Audio requested: ${includeAudio ? 'YES with constraints' : 'NO'}`);
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Verify what we actually got
+      const audioTracks = stream.getAudioTracks();
+      const videoTracks = stream.getVideoTracks();
+      
+      addLog(`✅ Stream obtained: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
+      
+      if (includeAudio && audioTracks.length === 0) {
+        addLog('⚠️ WARNING: Audio requested but no audio tracks received!');
+      }
+      
+      // Log audio track details
+      audioTracks.forEach((track, index) => {
+        const settings = track.getSettings();
+        addLog(`🎤 Audio track ${index}: ${track.label || 'Microphone'}`);
+        addLog(`   - State: ${track.readyState}, Enabled: ${track.enabled}`);
+        addLog(`   - Sample rate: ${settings.sampleRate}Hz, Channels: ${settings.channelCount}`);
       });
       
-      addLog('✅ Camera stream obtained');
+      // Log video track details
+      videoTracks.forEach((track, index) => {
+        const settings = track.getSettings();
+        addLog(`📹 Video track ${index}: ${track.label || 'Camera'}`);
+        addLog(`   - Resolution: ${settings.width}x${settings.height}@${settings.frameRate}fps`);
+        addLog(`   - Facing: ${settings.facingMode}`);
+      });
+      
       setPermissionState('granted');
       setErrorInfo(null);
       return stream;
@@ -141,8 +167,8 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
         setPermissionState('denied');
         setErrorInfo({
           type: 'permission',
-          message: 'Camera access denied by user',
-          solution: 'Please click "Allow" when prompted for camera access, or enable camera in browser settings'
+          message: 'Camera/microphone access denied by user',
+          solution: 'Please click "Allow" when prompted for camera and microphone access, or enable them in browser settings'
         });
       } else if (streamError.name === 'NotFoundError') {
         setErrorInfo({
@@ -156,6 +182,32 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
           message: 'Camera not supported in this browser',
           solution: 'Please try using Chrome, Firefox, Safari, or Edge'
         });
+      } else if (streamError.name === 'OverconstrainedError') {
+        addLog('⚠️ Constraints too strict, trying fallback...');
+        
+        // Fallback: Try with simpler constraints
+        try {
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode },
+            audio: includeAudio
+          });
+          
+          const fallbackAudio = fallbackStream.getAudioTracks().length;
+          const fallbackVideo = fallbackStream.getVideoTracks().length;
+          
+          addLog(`✅ Fallback stream: ${fallbackVideo} video, ${fallbackAudio} audio tracks`);
+          setPermissionState('granted');
+          setErrorInfo(null);
+          return fallbackStream;
+          
+        } catch (fallbackError) {
+          addLog(`❌ Fallback also failed: ${fallbackError}`);
+          setErrorInfo({
+            type: 'device',
+            message: 'Camera constraints not supported',
+            solution: 'Try using a different browser or device'
+          });
+        }
       } else {
         setErrorInfo({
           type: 'unknown',
@@ -170,17 +222,21 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
 
   const requestPermission = useCallback(async (): Promise<MediaStream | null> => {
     try {
-      addLog('🔒 Manually requesting camera permission...');
+      addLog('🔒 Manually requesting camera + microphone permission...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
-        audio: true
+        audio: true // Always request audio for permission
       });
+      
+      const audioTracks = stream.getAudioTracks();
+      const videoTracks = stream.getVideoTracks();
+      
+      addLog(`✅ Permission granted: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
       
       // Stop the stream immediately as we just wanted permission
       stream.getTracks().forEach(track => track.stop());
       
-      addLog('✅ Permission granted');
       setPermissionState('granted');
       setErrorInfo(null);
       
@@ -190,8 +246,8 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       setPermissionState('denied');
       setErrorInfo({
         type: 'permission',
-        message: 'Camera permission denied',
-        solution: 'Please enable camera access in browser settings'
+        message: 'Camera/microphone permission denied',
+        solution: 'Please enable camera and microphone access in browser settings'
       });
       
       return null;
@@ -215,7 +271,6 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
     requestPermission,
     clearError,
     resetPermissionState,
-    // Utility functions
     isHTTPS: checkHTTPS,
     hasMediaDeviceSupport: checkMediaDeviceSupport
   };

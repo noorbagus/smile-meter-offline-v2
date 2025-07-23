@@ -1,4 +1,4 @@
-// src/App.tsx - Complete with aggressive Instagram redirect
+// src/App.tsx - Complete with audio support and Instagram redirect
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -67,7 +67,6 @@ const CameraApp: React.FC = () => {
     
     if (shouldRedirect) {
       addLog('📱 Instagram redirect in progress...');
-      // Block app initialization during redirect
       setTimeout(() => {
         addLog('⏰ Redirect timeout - continuing with app');
         setAppReady(true);
@@ -115,8 +114,18 @@ const CameraApp: React.FC = () => {
       const hasPermission = await checkCameraPermission();
       if (!hasPermission) return;
 
+      // CRITICAL FIX: Always request audio with camera
       const stream = await requestCameraStream(currentFacingMode, true);
       if (!stream) return;
+
+      // Verify audio tracks in camera stream
+      const audioTracks = stream.getAudioTracks();
+      const videoTracks = stream.getVideoTracks();
+      addLog(`📊 Camera stream: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
+      
+      if (audioTracks.length === 0) {
+        addLog('🔇 WARNING: No audio tracks in camera stream - recordings will be silent!');
+      }
 
       const success = await initializeCameraKit(stream, cameraFeedRef);
       if (success) {
@@ -134,7 +143,9 @@ const CameraApp: React.FC = () => {
       addLog('🔄 Switching camera...');
       const newStream = await switchCamera();
       if (newStream) {
-        addLog('✅ Camera switched successfully');
+        // Verify audio tracks after switch
+        const audioTracks = newStream.getAudioTracks();
+        addLog(`✅ Camera switched - Audio tracks: ${audioTracks.length}`);
       }
     } catch (error) {
       addLog(`❌ Camera switch failed: ${error}`);
@@ -147,6 +158,33 @@ const CameraApp: React.FC = () => {
     
     if (!canvas) {
       addLog('❌ Canvas not available');
+      return;
+    }
+
+    // CRITICAL FIX: Verify audio stream has audio tracks before recording
+    if (stream) {
+      const audioTracks = stream.getAudioTracks();
+      const videoTracks = stream.getVideoTracks();
+      
+      addLog(`📊 Pre-recording stream check: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
+      
+      if (audioTracks.length === 0) {
+        addLog('🔇 CRITICAL WARNING: No audio tracks in camera stream!');
+        addLog('📱 Recordings will be SILENT - check microphone permissions');
+      } else {
+        audioTracks.forEach((track, index) => {
+          addLog(`🎤 Audio track ${index}: ${track.label || 'Unknown'}, state: ${track.readyState}, enabled: ${track.enabled}`);
+          
+          if (track.readyState !== 'live') {
+            addLog(`⚠️ Audio track ${index} not live: ${track.readyState}`);
+          }
+          if (!track.enabled) {
+            addLog(`⚠️ Audio track ${index} disabled`);
+          }
+        });
+      }
+    } else {
+      addLog('❌ No camera stream available for recording');
       return;
     }
 
@@ -202,9 +240,11 @@ const CameraApp: React.FC = () => {
 
   const handleRequestPermission = useCallback(async () => {
     try {
-      addLog('🔒 Requesting permission...');
+      addLog('🔒 Requesting camera + microphone permission...');
       const stream = await requestPermission();
       if (stream) {
+        const audioTracks = stream.getAudioTracks();
+        addLog(`✅ Permission granted with ${audioTracks.length} audio tracks`);
         stream.getTracks().forEach(track => track.stop());
         initializeApp();
       }
@@ -214,11 +254,10 @@ const CameraApp: React.FC = () => {
   }, [requestPermission, initializeApp, addLog]);
 
   const handleRetry = useCallback(() => {
-    addLog('🔄 Retrying...');
+    addLog('🔄 Retrying app initialization...');
     initializeApp();
   }, [initializeApp, addLog]);
 
-  // Instagram redirect retry button
   const handleRetryRedirect = useCallback(() => {
     addLog('📱 Manual Instagram redirect retry...');
     retryRedirect();
