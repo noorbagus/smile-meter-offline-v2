@@ -1,4 +1,4 @@
-// src/App.tsx - Complete with audio support and Instagram redirect
+// src/App.tsx - Hide all UI buttons, show only camera stream
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -10,8 +10,8 @@ import {
   LoadingScreen,
   ErrorScreen,
   CameraFeed,
-  CameraControls,
-  RecordingControls,
+  // CameraControls,      // HIDDEN
+  // RecordingControls,   // HIDDEN
   VideoPreview,
   SettingsPanel,
   RenderingModal
@@ -61,7 +61,7 @@ const CameraApp: React.FC = () => {
     setShowRenderingModal
   } = useRecordingContext();
 
-  // Aggressive Instagram redirect check
+  // Instagram redirect check
   useEffect(() => {
     const shouldRedirect = checkAndRedirect();
     
@@ -114,11 +114,9 @@ const CameraApp: React.FC = () => {
       const hasPermission = await checkCameraPermission();
       if (!hasPermission) return;
 
-      // CRITICAL FIX: Always request audio with camera
       const stream = await requestCameraStream(currentFacingMode, true);
       if (!stream) return;
 
-      // Verify audio tracks in camera stream
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
       addLog(`📊 Camera stream: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
@@ -143,7 +141,6 @@ const CameraApp: React.FC = () => {
       addLog('🔄 Switching camera...');
       const newStream = await switchCamera();
       if (newStream) {
-        // Verify audio tracks after switch
         const audioTracks = newStream.getAudioTracks();
         addLog(`✅ Camera switched - Audio tracks: ${audioTracks.length}`);
       }
@@ -161,7 +158,6 @@ const CameraApp: React.FC = () => {
       return;
     }
 
-    // CRITICAL FIX: Verify audio stream has audio tracks before recording
     if (stream) {
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
@@ -323,6 +319,7 @@ const CameraApp: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
+      {/* ONLY CAMERA FEED - NO UI BUTTONS */}
       <CameraFeed
         cameraFeedRef={cameraFeedRef}
         cameraState={cameraState}
@@ -330,6 +327,8 @@ const CameraApp: React.FC = () => {
         isFlipped={isFlipped}
       />
 
+      {/* ALL UI BUTTONS HIDDEN - COMMENTED OUT */}
+      {/*
       <CameraControls
         onSettings={() => setShowSettings(true)}
         onFlip={() => setIsFlipped(!isFlipped)}
@@ -344,7 +343,9 @@ const CameraApp: React.FC = () => {
         formatTime={formatTime}
         disabled={!isReady}
       />
+      */}
 
+      {/* Keep essential modals for functionality */}
       {cameraState === 'initializing' && (
         <LoadingScreen 
           message="Initializing Web AR Netramaya..."

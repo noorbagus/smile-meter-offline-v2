@@ -1,4 +1,4 @@
-// src/components/camera/RecordingControls.tsx
+// src/components/camera/RecordingControls.tsx - ALL RECORDING CONTROLS HIDDEN
 import React from 'react';
 import { SwitchCamera, RefreshCw } from 'lucide-react';
 import { ControlButton, RecordButton } from '../ui';
@@ -14,15 +14,11 @@ interface RecordingControlsProps {
   disabled?: boolean;
 }
 
-export const RecordingControls: React.FC<RecordingControlsProps> = ({
-  recordingState,
-  recordingTime,
-  onToggleRecording,
-  onGallery,
-  onSwitchCamera,
-  formatTime,
-  disabled = false
-}) => {
+export const RecordingControls: React.FC<RecordingControlsProps> = () => {
+  // RETURN NULL - HIDE ALL RECORDING CONTROLS
+  return null;
+
+  /* ORIGINAL CONTROLS - COMMENTED OUT
   return (
     <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-10">
       <div className="flex items-center justify-between">
@@ -52,4 +48,5 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
       </div>
     </div>
   );
+  */
 };

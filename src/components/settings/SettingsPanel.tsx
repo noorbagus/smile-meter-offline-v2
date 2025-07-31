@@ -1,4 +1,4 @@
-// src/components/settings/SettingsPanel.tsx
+// src/components/settings/SettingsPanel.tsx - SETTINGS PANEL HIDDEN
 import React from 'react';
 import { X, Download } from 'lucide-react';
 import { detectAndroid } from '../../utils/androidRecorderFix';
@@ -10,12 +10,11 @@ interface SettingsPanelProps {
   onExportLogs?: () => void;
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({
-  isOpen,
-  onClose,
-  debugLogs,
-  onExportLogs
-}) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = () => {
+  // RETURN NULL - HIDE SETTINGS PANEL
+  return null;
+
+  /* ORIGINAL SETTINGS PANEL - COMMENTED OUT
   if (!isOpen) return null;
 
   const isAndroid = detectAndroid();
@@ -34,7 +33,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
         
         <div className="space-y-4">
-          {/* Recording Format Info */}
           <div className="text-white/80 text-sm">
             <p className="mb-2 font-medium">🎬 Recording Format:</p>
             <p className="text-xs text-white/60 bg-black/20 p-3 rounded">
@@ -45,7 +43,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </p>
           </div>
 
-          {/* Device Info */}
           <div className="text-white/80 text-sm">
             <p className="mb-2 font-medium">📱 Device Info:</p>
             <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
@@ -56,7 +53,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           </div>
           
-          {/* Debug Logs */}
           <div className="text-white/80 text-sm">
             <div className="flex justify-between items-center mb-2">
               <p className="font-medium">📊 Debug Logs:</p>
@@ -81,7 +77,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           </div>
 
-          {/* Camera Kit Info */}
           <div className="text-white/80 text-sm">
             <p className="mb-2 font-medium">🎭 AR Engine:</p>
             <div className="text-xs text-white/60 bg-black/20 p-3 rounded">
@@ -91,7 +86,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           </div>
 
-          {/* Performance Tips */}
           <div className="text-white/80 text-sm">
             <p className="mb-2 font-medium">💡 Tips:</p>
             <div className="text-xs text-white/60 space-y-1">
@@ -105,4 +99,5 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
     </div>
   );
+  */
 };
