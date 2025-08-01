@@ -5,7 +5,7 @@ const API_TOKEN = import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1
 
 const LENS_ID = import.meta.env.VITE_CAMERA_KIT_LENS_ID || '18afcdf0-939d-4fa6-89d7-9728243de56c';
 
-const LENS_GROUP_ID = import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || '9748b404-fe76-4802-9a16-ca6bb1fe6295';
+const LENS_GROUP_ID = import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || 'cd5b1b49-4483-45ea-9772-cb241939e2ce';
 
 export const CAMERA_KIT_CONFIG: CameraKitConfig = {
   apiToken: API_TOKEN,
