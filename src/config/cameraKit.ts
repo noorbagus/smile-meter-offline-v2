@@ -1,4 +1,4 @@
-// src/config/cameraKit.ts - 4K optimized configuration
+// src/config/cameraKit.ts - Fixed 4K optimized configuration
 import type { CameraKitConfig } from '../types/camera';
 
 // Environment variables with fallback values
@@ -13,7 +13,7 @@ export const CAMERA_KIT_CONFIG: CameraKitConfig = {
   lensId: LENS_ID,
   lensGroupId: LENS_GROUP_ID,
   
-  // 4K canvas for crisp display
+  // Fixed 4K canvas for all devices
   canvas: {
     width: 3840,
     height: 2160
@@ -27,16 +27,17 @@ export const CAMERA_KIT_CONFIG: CameraKitConfig = {
   // High bitrate for 4K recording
   recording: {
     mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-    videoBitsPerSecond: 12000000 // 12Mbps for 4K
+    videoBitsPerSecond: 15000000 // 15Mbps for 4K
   }
 };
 
-// 4K display configuration
+// Fixed 4K display configuration
 export const DISPLAY_CONFIG = {
   canvas: {
     width: 3840,
     height: 2160,
-    pixelRatio: 1, // Avoid double scaling
+    aspectRatio: 16 / 9,
+    pixelRatio: 1
   },
   rendering: {
     antialias: true,
@@ -45,16 +46,16 @@ export const DISPLAY_CONFIG = {
     premultipliedAlpha: false
   },
   css: {
-    imageRendering: 'crisp-edges',
-    willChange: 'transform',
-    backfaceVisibility: 'hidden'
+    objectFit: 'contain' as const,
+    objectPosition: 'center' as const,
+    imageRendering: 'crisp-edges' as const
   }
 };
 
-// AR processing configuration (separate from display)
+// AR processing configuration (optimized for performance)
 export const AR_PROCESSING_CONFIG = {
   renderSize: {
-    width: 1920,  // HD for performance
+    width: 1920,  // HD processing
     height: 1080
   },
   frameRate: 30,
@@ -66,7 +67,7 @@ export const validateConfig = (): boolean => {
   
   // Log configuration for debugging
   if (import.meta.env.MODE === 'development') {
-    console.log('🔧 4K Camera Kit Config:', {
+    console.log('🔧 Fixed 4K Camera Kit Config:', {
       hasApiToken: !!apiToken,
       apiTokenLength: apiToken?.length,
       lensId: lensId,
@@ -113,7 +114,7 @@ export const getCurrentConfig = () => {
   };
 };
 
-// Utility to get optimal camera constraints
+// Fixed 4K camera constraints
 export const get4KCameraConstraints = (
   facingMode: 'user' | 'environment' = 'user'
 ): MediaStreamConstraints => {
@@ -134,7 +135,7 @@ export const get4KCameraConstraints = (
   };
 };
 
-// Recording format detection
+// Fixed 4K recording format
 export const getOptimalRecordingFormat = () => {
   const formats = [
     'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC
@@ -148,14 +149,14 @@ export const getOptimalRecordingFormat = () => {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) {
       return {
         mimeType,
-        videoBitsPerSecond: 12000000, // 12Mbps for 4K
+        videoBitsPerSecond: 15000000, // 15Mbps for 4K
         audioBitsPerSecond: 256000
       };
     }
   }
 
   return {
-    videoBitsPerSecond: 12000000,
+    videoBitsPerSecond: 15000000,
     audioBitsPerSecond: 256000
   };
 };

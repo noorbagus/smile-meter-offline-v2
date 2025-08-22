@@ -1,8 +1,15 @@
-// src/hooks/useCameraKit.ts - 4K default for Android display
+// src/hooks/useCameraKit.ts - Fixed 4K with proper scaling
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { CAMERA_KIT_CONFIG, validateConfig } from '../config/cameraKit';
 import type { CameraState } from './useCameraPermissions';
+
+// Fixed 4K configuration
+const FIXED_4K_CONFIG = {
+  canvas: { width: 3840, height: 2160 },
+  render: { width: 1920, height: 1080 },
+  aspectRatio: 16 / 9
+};
 
 // Singleton instance
 let cameraKitInstance: any = null;
@@ -63,7 +70,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
   const isInitializedRef = useRef<boolean>(false);
 
-  // 4K Canvas attachment (always 4K)
+  // Fixed 4K Canvas attachment with portrait optimization
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
     containerReference: React.RefObject<HTMLDivElement>
@@ -87,39 +94,60 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         }
         
         outputCanvasRef.current = canvas;
-        const container = containerReference.current;
-        const rect = container.getBoundingClientRect();
         
-        // Set 4K canvas resolution (only if not already controlled by Camera Kit)
-        try {
-          canvas.width = 3840;
-          canvas.height = 2160;
-          addLog('✅ 4K Canvas dimensions set manually');
-        } catch (error) {
-          addLog('⚠️ Canvas controlled by Camera Kit, using default size');
-        }
+        // Force 4K canvas resolution
+        canvas.width = FIXED_4K_CONFIG.canvas.width;
+        canvas.height = FIXED_4K_CONFIG.canvas.height;
         
-        // 4K optimized CSS
+        // Detect orientation
+        const isPortrait = window.innerHeight > window.innerWidth;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const orientation = isPortrait ? 'portrait' : 'landscape';
+        
+        addLog(`📱 Orientation: ${orientation} (${viewportWidth}x${viewportHeight})`);
+        
+        // Portrait-optimized 4K scaling CSS
         canvas.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
           width: 100%;
           height: 100%;
-          object-fit: cover;
-          position: absolute;
-          inset: 0;
+          object-fit: contain;
+          object-position: center;
           background: transparent;
           image-rendering: crisp-edges;
           image-rendering: -webkit-optimize-contrast;
           transform: translateZ(0);
           will-change: transform;
           backface-visibility: hidden;
+          max-width: 100vw;
+          max-height: 100vh;
         `;
         
-        canvas.className = 'absolute inset-0 w-full h-full object-cover';
+        canvas.className = 'absolute inset-0 w-full h-full object-contain';
+        
+        // Portrait-aware container styling
+        const container = containerReference.current;
+        container.style.cssText = `
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #000;
+          touch-action: manipulation;
+        `;
         
         try {
-          containerReference.current.appendChild(canvas);
+          container.appendChild(canvas);
           isAttachedRef.current = true;
-          addLog(`✅ 4K Canvas attached: ${canvas.width}x${canvas.height} → ${rect.width}x${rect.height}`);
+          
+          const rect = container.getBoundingClientRect();
+          addLog(`✅ 4K Canvas attached (${orientation}): ${canvas.width}x${canvas.height} → ${Math.round(rect.width)}x${Math.round(rect.height)}`);
         } catch (e) {
           addLog(`❌ Canvas attachment failed: ${e}`);
         }
@@ -131,12 +159,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
   const restoreCameraFeed = useCallback(() => {
     if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
-      addLog('🔄 Restoring camera feed...');
+      addLog('🔄 Restoring 4K camera feed...');
       
       const isCanvasAttached = containerRef.current.current.contains(outputCanvasRef.current);
       
       if (!isCanvasAttached) {
-        addLog('📱 Re-attaching canvas after app return');
+        addLog('📱 Re-attaching 4K canvas after app return');
         attachCameraOutput(outputCanvasRef.current, containerRef.current);
       }
       
@@ -204,7 +232,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        addLog('👁️ App became visible, checking camera feed...');
+        addLog('👁️ App became visible, checking 4K camera feed...');
         setTimeout(() => {
           restoreCameraFeed();
         }, 100);
@@ -236,9 +264,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         await withTimeout(sessionRef.current.setSource(source), 3000);
         
-        // Always apply HD render size for AR processing
-        await source.setRenderSize(1920, 1080);
-        addLog('✅ AR render size: 1920x1080 (processing), display: 4K');
+        // HD render size for AR processing (4K display)
+        await source.setRenderSize(FIXED_4K_CONFIG.render.width, FIXED_4K_CONFIG.render.height);
+        addLog(`✅ AR render size: ${FIXED_4K_CONFIG.render.width}x${FIXED_4K_CONFIG.render.height} (processing), display: 4K`);
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -255,7 +283,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit with 4K default...');
+      addLog('🎭 Initializing Camera Kit with fixed 4K...');
       setCameraState('initializing');
       containerRef.current = containerReference;
 
@@ -296,9 +324,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       await withTimeout(session.setSource(source), 3000);
       addLog('✅ Camera source configured');
 
-      // AR processing in 1080p, display upscaled to 4K
-      await source.setRenderSize(1920, 1080);
-      addLog('✅ AR render size: 1920x1080 (processing), display: 4K');
+      // AR processing in HD, display upscaled to 4K
+      await source.setRenderSize(FIXED_4K_CONFIG.render.width, FIXED_4K_CONFIG.render.height);
+      addLog(`✅ AR render size: ${FIXED_4K_CONFIG.render.width}x${FIXED_4K_CONFIG.render.height} (processing), display: 4K`);
 
       // Load lens repository
       if (!lensRepositoryRef.current) {
@@ -332,7 +360,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       // Attach 4K output with extended delay
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
-          addLog('🎥 Attaching Camera Kit output...');
+          addLog('🎥 Attaching 4K Camera Kit output...');
           attachCameraOutput(session.output.live, containerReference);
         } else {
           addLog(`❌ Output attachment failed: live=${!!session.output.live}, container=${!!containerReference.current}, attached=${isAttachedRef.current}`);
@@ -340,7 +368,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 4K Camera Kit initialization complete');
+      addLog('🎉 Fixed 4K Camera Kit initialization complete');
       return true;
 
     } catch (error: any) {
@@ -378,7 +406,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Get new high-res stream
+      // Get new 4K stream
       addLog(`📹 Requesting ${newFacingMode} camera for 4K...`);
       
       const newStream = await withTimeout(
@@ -407,8 +435,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       addLog('✅ Source set successfully');
 
       // Apply HD render size for AR processing
-      await source.setRenderSize(1920, 1080);
-      addLog('✅ AR render size: 1920x1080 (processing), display: 4K');
+      await source.setRenderSize(FIXED_4K_CONFIG.render.width, FIXED_4K_CONFIG.render.height);
+      addLog(`✅ AR render size: ${FIXED_4K_CONFIG.render.width}x${FIXED_4K_CONFIG.render.height} (processing), display: 4K`);
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
