@@ -1,4 +1,4 @@
-// src/hooks/useCameraPermissions.ts - Landscape constraints for Brio hardware
+// src/hooks/useCameraPermissions.ts - LANDSCAPE constraints for Brio hardware
 import { useState, useCallback } from 'react';
 
 export type PermissionState = 'checking' | 'granted' | 'denied' | 'prompt';
