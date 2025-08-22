@@ -250,14 +250,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         await withTimeout(sessionRef.current.setSource(source), 3000);
         
-        // Match AR processing to camera resolution
-        const videoTrack = stream.getVideoTracks()[0];
-        const settings = videoTrack.getSettings();
-        await source.setRenderSize(
-          settings.width || adaptiveConfig.canvas.width,
-          settings.height || adaptiveConfig.canvas.height
-        );
-        addLog(`✅ Mirrored render: ${settings.width}x${settings.height}`);
+        // High-quality rendering with fixed AR resolution
+        await source.setRenderSize(2560, 1440);
+        addLog(`✅ Fixed AR render: 2560x1440 (eliminates pixelated edges)`);
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -315,14 +310,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       await withTimeout(session.setSource(source), 3000);
       addLog('✅ Mirrored camera source configured');
 
-      // High-quality AR rendering
-      const videoTrack = stream.getVideoTracks()[0];
-      const settings = videoTrack.getSettings();
-      await source.setRenderSize(
-        settings.width || adaptiveConfig.canvas.width,
-        settings.height || adaptiveConfig.canvas.height
-      );
-      addLog(`✅ Mirrored AR render: ${settings.width}x${settings.height}`);
+      // Fixed high-quality AR rendering for crisp 3D objects
+      await source.setRenderSize(2560, 1440);
+      addLog(`✅ Fixed AR render: 2560x1440 (eliminates pixelated edges)`);
 
       if (!lensRepositoryRef.current) {
         try {
@@ -441,12 +431,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       await withTimeout(sessionRef.current.setSource(source), 3000);
       addLog('✅ Mirrored source set');
 
-      // High-quality rendering
-      const videoSettings = videoTracks[0]?.getSettings();
-      if (videoSettings) {
-        await source.setRenderSize(videoSettings.width || 1280, videoSettings.height || 720);
-        addLog(`✅ Mirrored render: ${videoSettings.width}x${videoSettings.height}`);
-      }
+      // Fixed AR rendering - always 2560x1440 for crisp 3D objects
+      await source.setRenderSize(2560, 1440);
+      addLog(`✅ Fixed AR render: 2560x1440 (eliminates pixelated edges)`);
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
