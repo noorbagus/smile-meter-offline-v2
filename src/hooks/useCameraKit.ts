@@ -97,7 +97,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           displayHeight = containerRect.width / canvasAspect;
         }
         
-        // MAX QUALITY CSS
+        // MAX QUALITY CSS - ANTI-PIXELATED
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
@@ -109,8 +109,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           object-position: center;
           background: transparent;
           image-rendering: auto;
+          image-rendering: -webkit-optimize-contrast;
+          image-rendering: smooth;
           will-change: transform;
           backface-visibility: hidden;
+          filter: none;
         `;
         
         containerReference.current.style.cssText = `

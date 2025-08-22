@@ -21,8 +21,16 @@ export const getMaxPortraitCanvasSize = () => {
   const portraitWidth = hardwareLandscapeHeight;   // 1440 (dari height landscape)
   const portraitHeight = hardwareLandscapeWidth;   // 2560 (dari width landscape)
   
-  // Device capability check
-  const deviceCanHandle4K = window.screen.width >= 1440 || window.screen.height >= 2560;
+  // Enhanced device capability detection untuk Android TV/Box
+  const isAndroidTV = /Android.*TV|Android.*Box/i.test(navigator.userAgent);
+  const isKhadas = /Khadas/i.test(navigator.userAgent) || /RK3588|RK3576/i.test(navigator.userAgent);
+  const hasHighDPR = window.devicePixelRatio >= 1.5;
+  const has4KScreen = window.screen.width >= 1440 || window.screen.height >= 2560;
+  const hasGoodMemory = (navigator as any).deviceMemory >= 4 || !('deviceMemory' in navigator);
+  const hasGoodCores = navigator.hardwareConcurrency >= 6;
+  
+  // Device dianggap capable jika salah satu kondisi terpenuhi
+  const deviceCanHandle4K = isAndroidTV || isKhadas || has4KScreen || (hasHighDPR && hasGoodMemory && hasGoodCores);
   
   let finalWidth, finalHeight;
   
@@ -38,12 +46,22 @@ export const getMaxPortraitCanvasSize = () => {
   }
   
   console.log('🎯 MAX Portrait Canvas:', {
+    device: {
+      userAgent: navigator.userAgent.includes('Khadas') ? 'Khadas Edge 2 Pro' : 'Unknown',
+      isAndroidTV,
+      isKhadas,
+      hasHighDPR,
+      has4KScreen,
+      hasGoodMemory: hasGoodMemory ? `${(navigator as any).deviceMemory || 'unknown'}GB` : 'low',
+      hasGoodCores: `${navigator.hardwareConcurrency} cores`
+    },
     hardwareLandscape: `${hardwareLandscapeWidth}x${hardwareLandscapeHeight}`,
     rotatedPortrait: `${portraitWidth}x${portraitHeight}`,
     deviceCanHandle4K,
     final: `${finalWidth}x${finalHeight}`,
     flow: 'Hardware 2560x1440 → Rotated 1440x2560',
-    qualityGain: `${((finalWidth * finalHeight) / (1080 * 1920) * 100).toFixed(0)}% vs 1080p`
+    qualityGain: `${((finalWidth * finalHeight) / (1080 * 1920) * 100).toFixed(0)}% vs 1080p`,
+    forceMaxQuality: deviceCanHandle4K ? 'YES - MAX QUALITY' : 'NO - SCALED'
   });
   
   return {
