@@ -108,12 +108,10 @@ const applyAntiPixelatedStyling = (
     height: ${displayHeight}px;
     transform: ${transform};
     image-rendering: smooth;
-    image-rendering: -webkit-optimize-contrast;
     object-fit: contain;
     object-position: center;
     will-change: transform;
     backface-visibility: hidden;
-    perspective: 1000px;
     filter: blur(0px);
     background: transparent;
     border: none;
@@ -122,10 +120,6 @@ const applyAntiPixelatedStyling = (
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: optimize-contrast;
   `;
   
   // Removed WebGL context access - Canvas is controlled by Snap Camera Kit OffscreenCanvas
