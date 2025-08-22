@@ -1,7 +1,7 @@
-// src/hooks/useCameraKit.ts - Always mirror, no facingMode
+// src/hooks/useCameraKit.ts - MAX QUALITY: Hardware Landscape → Software Portrait
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
-import { createAdaptiveCameraKitConfig, validateConfig } from '../config/cameraKit';
+import { createMaxPortraitCameraKitConfig, validateConfig } from '../config/cameraKit';
 import type { CameraState } from './useCameraPermissions';
 
 let cameraKitInstance: any = null;
@@ -46,7 +46,7 @@ preloadCameraKit().catch(console.error);
 
 export const useCameraKit = (addLog: (message: string) => void) => {
   const [cameraState, setCameraState] = useState<CameraState>('initializing');
-  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user'); // For UI only
+  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
   
   const sessionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -80,23 +80,24 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         }
         
         outputCanvasRef.current = canvas;
-        addLog(`📊 Canvas: ${canvas.width}x${canvas.height}`);
+        addLog(`📊 MAX Canvas: ${canvas.width}x${canvas.height} (${canvas.width >= 1440 ? 'MAX QUALITY' : 'SCALED'})`);
         
-        // Perfect fit calculations
+        // Perfect fit untuk max quality portrait
         const containerRect = containerReference.current.getBoundingClientRect();
         const canvasAspect = canvas.width / canvas.height;
         const containerAspect = containerRect.width / containerRect.height;
         
         let displayWidth, displayHeight;
+        // Cover fit untuk max quality (bukan contain)
         if (canvasAspect > containerAspect) {
-          displayWidth = containerRect.width;
-          displayHeight = containerRect.width / canvasAspect;
-        } else {
           displayHeight = containerRect.height;
           displayWidth = containerRect.height * canvasAspect;
+        } else {
+          displayWidth = containerRect.width;
+          displayHeight = containerRect.width / canvasAspect;
         }
         
-        // HIGH QUALITY CSS with mirroring
+        // MAX QUALITY CSS
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
@@ -104,12 +105,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           width: ${displayWidth}px;
           height: ${displayHeight}px;
           transform: translate(-50%, -50%);
-          object-fit: contain;
+          object-fit: cover;
           object-position: center;
           background: transparent;
           image-rendering: auto;
-          image-rendering: -webkit-optimize-contrast;
-          filter: contrast(1.05);
           will-change: transform;
           backface-visibility: hidden;
         `;
@@ -132,7 +131,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           
           const scaleX = displayWidth / canvas.width;
           const scaleY = displayHeight / canvas.height;
-          addLog(`✅ Canvas attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
+          const qualityIndicator = canvas.width >= 1440 ? '4K PORTRAIT' : '1080p PORTRAIT';
+          addLog(`✅ ${qualityIndicator} attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
         } catch (e) {
           addLog(`❌ Attachment failed: ${e}`);
         }
@@ -144,19 +144,19 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
   const restoreCameraFeed = useCallback(() => {
     if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
-      addLog('🔄 Restoring camera feed...');
+      addLog('🔄 Restoring MAX quality camera feed...');
       
       const isCanvasAttached = containerRef.current.current.contains(outputCanvasRef.current);
       
       if (!isCanvasAttached) {
-        addLog('📱 Re-attaching canvas');
+        addLog('📱 Re-attaching MAX quality canvas');
         attachCameraOutput(outputCanvasRef.current, containerRef.current);
       }
       
       if (sessionRef.current.output?.live) {
         try {
           sessionRef.current.play('live');
-          addLog('▶️ Session resumed');
+          addLog('▶️ MAX quality session resumed');
         } catch (error) {
           addLog(`⚠️ Resume error: ${error}`);
         }
@@ -171,7 +171,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
 
     try {
-      addLog('🔄 Restarting AR lens...');
+      addLog('🔄 Restarting MAX quality AR lens...');
       
       sessionRef.current.pause();
       await new Promise(resolve => setTimeout(resolve, 200));
@@ -189,7 +189,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       if (lenses && lenses.length > 0 && currentConfigRef.current) {
         const targetLens = lenses.find((lens: any) => lens.id === currentConfigRef.current.lensId) || lenses[0];
         await withTimeout(sessionRef.current.applyLens(targetLens), 3000);
-        addLog(`✅ Lens restarted: ${targetLens.name}`);
+        addLog(`✅ MAX quality lens restarted: ${targetLens.name}`);
       }
       
       sessionRef.current.play('live');
@@ -198,7 +198,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         restoreCameraFeed();
       }, 300);
       
-      addLog('🎉 AR lens restarted');
+      addLog('🎉 MAX quality AR lens restarted');
       return true;
       
     } catch (error) {
@@ -217,7 +217,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        addLog('👁️ App visible - checking camera...');
+        addLog('👁️ App visible - checking MAX quality camera...');
         setTimeout(() => {
           restoreCameraFeed();
         }, 100);
@@ -236,28 +236,29 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     containerReference: React.RefObject<HTMLDivElement>
   ): Promise<boolean> => {
     try {
-      const adaptiveConfig = createAdaptiveCameraKitConfig(containerReference);
-      currentConfigRef.current = adaptiveConfig;
+      // MAX QUALITY CONFIG: Hardware 2560x1440 → Portrait 1440x2560
+      const maxPortraitConfig = createMaxPortraitCameraKitConfig();
+      currentConfigRef.current = maxPortraitConfig;
+      
+      // Log quality info
+      const qualityMode = maxPortraitConfig.canvas.width >= 1440 ? 'MAX QUALITY' : 'SCALED';
+      const pixels = maxPortraitConfig.canvas.width * maxPortraitConfig.canvas.height;
+      const gain = ((pixels / (1080 * 1920)) * 100).toFixed(0);
+      
+      addLog(`🚀 ${qualityMode}: ${maxPortraitConfig.canvas.width}x${maxPortraitConfig.canvas.height}`);
+      addLog(`📊 Quality gain: ${gain}% vs 1080p (${(pixels / 1000000).toFixed(1)}MP)`);
       
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
-        addLog('📱 Updating existing session...');
+        addLog('📱 Updating existing MAX quality session...');
         
-        // SOFTWARE ROTATION: Mirror + Rotate landscape camera for portrait display
         const source = createMediaStreamSource(stream, {
-          transform: Transform2D.MirrorX, // Always mirror for natural selfie
-          cameraType: 'user' // Fixed value for consistency
+          transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+          cameraType: currentFacingMode
         });
         
         await withTimeout(sessionRef.current.setSource(source), 3000);
-        
-        // Match AR processing to camera resolution
-        const videoTrack = stream.getVideoTracks()[0];
-        const settings = videoTrack.getSettings();
-        await source.setRenderSize(
-          settings.width || adaptiveConfig.canvas.width,
-          settings.height || adaptiveConfig.canvas.height
-        );
-        addLog(`✅ Mirrored render: ${settings.width}x${settings.height}`);
+        await source.setRenderSize(maxPortraitConfig.canvas.width, maxPortraitConfig.canvas.height);
+        addLog(`✅ MAX portrait render: ${maxPortraitConfig.canvas.width}x${maxPortraitConfig.canvas.height}`);
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -270,12 +271,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           }, 100);
         }
         
-        addLog('✅ Stream updated with mirror');
+        addLog('✅ MAX quality stream updated');
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit with mirrored output...');
-      addLog(`📐 Adaptive canvas: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
+      addLog('🎭 Initializing MAX QUALITY Camera Kit...');
+      addLog(`📐 Rotated canvas: ${maxPortraitConfig.canvas.width}x${maxPortraitConfig.canvas.height} (landscape→portrait)`);
       setCameraState('initializing');
       containerRef.current = containerReference;
 
@@ -295,7 +296,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         throw new Error('Failed to initialize Camera Kit');
       }
 
-      addLog('🎬 Creating session...');
+      addLog('🎬 Creating MAX quality session...');
       const session: any = await withTimeout(cameraKit.createSession(), 5000);
       sessionRef.current = session;
       streamRef.current = stream;
@@ -306,28 +307,22 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
-      // SOFTWARE ROTATION: Mirror + Rotate landscape camera for portrait display
       const source = createMediaStreamSource(stream, {
-        transform: Transform2D.MirrorX, // Always mirror for natural selfie
-        cameraType: 'user' // Fixed value for consistency
+        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+        cameraType: currentFacingMode
       });
       
       await withTimeout(session.setSource(source), 3000);
-      addLog('✅ Mirrored camera source configured');
+      addLog('✅ Hardware landscape camera source configured');
 
-      // High-quality AR rendering
-      const videoTrack = stream.getVideoTracks()[0];
-      const settings = videoTrack.getSettings();
-      await source.setRenderSize(
-        settings.width || adaptiveConfig.canvas.width,
-        settings.height || adaptiveConfig.canvas.height
-      );
-      addLog(`✅ Mirrored AR render: ${settings.width}x${settings.height}`);
+      // CRITICAL: Set MAX portrait render size (rotated dari landscape)
+      await source.setRenderSize(maxPortraitConfig.canvas.width, maxPortraitConfig.canvas.height);
+      addLog(`✅ MAX portrait AR render: ${maxPortraitConfig.canvas.width}x${maxPortraitConfig.canvas.height} (rotated!)`);
 
       if (!lensRepositoryRef.current) {
         try {
           const lensResult: any = await withTimeout(
-            cameraKit.lensRepository.loadLensGroups([adaptiveConfig.lensGroupId]), 
+            cameraKit.lensRepository.loadLensGroups([maxPortraitConfig.lensGroupId]), 
             5000
           );
           lensRepositoryRef.current = lensResult.lenses;
@@ -340,9 +335,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       const lenses = lensRepositoryRef.current;
       if (lenses && lenses.length > 0) {
         try {
-          const targetLens = lenses.find((lens: any) => lens.id === adaptiveConfig.lensId) || lenses[0];
+          const targetLens = lenses.find((lens: any) => lens.id === maxPortraitConfig.lensId) || lenses[0];
           await withTimeout(session.applyLens(targetLens), 3000);
-          addLog(`✅ Lens applied: ${targetLens.name}`);
+          addLog(`✅ MAX quality lens applied: ${targetLens.name}`);
         } catch (lensApplyError) {
           addLog(`⚠️ Lens application failed: ${lensApplyError}`);
         }
@@ -352,22 +347,22 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
-          addLog('🎥 Attaching mirrored output...');
+          addLog('🎥 Attaching MAX quality output...');
           attachCameraOutput(session.output.live, containerReference);
         }
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Mirrored Camera Kit complete');
+      addLog(`🎉 MAX QUALITY Camera Kit complete - ${qualityMode}!`);
       return true;
 
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      addLog(`❌ Camera Kit error: ${errorMessage}`);
+      addLog(`❌ MAX quality Camera Kit error: ${errorMessage}`);
       setCameraState('error');
       return false;
     }
-  }, [addLog, attachCameraOutput, cameraState]);
+  }, [currentFacingMode, addLog, attachCameraOutput, cameraState]);
 
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
     if (!sessionRef.current || !isInitializedRef.current) {
@@ -376,9 +371,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
 
     try {
-      // Toggle UI state only (doesn't affect actual camera)
       const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      addLog(`🔄 Refreshing camera stream (UI: ${newFacingMode})...`);
+      addLog(`🔄 Switching to ${newFacingMode} camera (MAX quality)...`);
 
       if (sessionRef.current.output?.live) {
         sessionRef.current.pause();
@@ -395,11 +389,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Request new stream (no facingMode - always highest)
+      // LANDSCAPE constraints for MAX quality (hardware optimal)
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
-            // No facingMode - always get highest resolution
+            facingMode: newFacingMode,
+            // Request LANDSCAPE untuk MAX quality
             width: { ideal: 2560, min: 1280, max: 3840 },
             height: { ideal: 1440, min: 720, max: 2160 },
             frameRate: { ideal: 30, min: 15, max: 60 }
@@ -415,9 +410,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         5000
       );
 
-      addLog(`✅ Refreshed stream obtained`);
+      addLog(`✅ New ${newFacingMode} MAX quality stream obtained`);
       streamRef.current = newStream;
 
+      // Log stream quality
       const videoTracks = newStream.getVideoTracks();
       const audioTracks = newStream.getAudioTracks();
       
@@ -425,42 +421,46 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         const settings = videoTracks[0].getSettings();
         const resolution = `${settings.width}x${settings.height}`;
         const isLandscape = (settings.width || 0) > (settings.height || 0);
+        const isMaxQuality = (settings.width || 0) >= 2560;
         
-        addLog(`📹 Refreshed stream: ${resolution}@${settings.frameRate}fps`);
+        addLog(`📹 New stream: ${resolution}@${settings.frameRate}fps`);
         addLog(`🔄 Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
+        addLog(`🚀 Quality: ${isMaxQuality ? 'MAX QUALITY ✅' : 'STANDARD'}`);
+        
+        if (!isLandscape) {
+          addLog(`⚠️ Expected landscape, got portrait - browser may have auto-rotated`);
+        }
       }
       
       addLog(`🎤 Audio tracks: ${audioTracks.length}`);
 
-      // SOFTWARE ROTATION: Mirror + Rotate landscape camera for portrait display
       const source = createMediaStreamSource(newStream, {
-        transform: Transform2D.MirrorX, // Always mirror for natural selfie
-        cameraType: 'user' // Fixed value
+        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+        cameraType: newFacingMode
       });
       
       await withTimeout(sessionRef.current.setSource(source), 3000);
-      addLog('✅ Mirrored source set');
+      addLog('✅ Source set');
 
-      // High-quality rendering
-      const videoSettings = videoTracks[0]?.getSettings();
-      if (videoSettings) {
-        await source.setRenderSize(videoSettings.width || 1280, videoSettings.height || 720);
-        addLog(`✅ Mirrored render: ${videoSettings.width}x${videoSettings.height}`);
+      const config = currentConfigRef.current;
+      if (config) {
+        await source.setRenderSize(config.canvas.width, config.canvas.height);
+        addLog(`✅ MAX portrait render: ${config.canvas.width}x${config.canvas.height} (rotated)`);
       }
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
       if (sessionRef.current.output?.live) {
         sessionRef.current.play('live');
-        addLog('▶️ Session resumed');
+        addLog('▶️ MAX quality session resumed');
       }
 
-      setCurrentFacingMode(newFacingMode); // UI state only
-      addLog(`🎉 Camera refreshed (UI: ${newFacingMode})`);
+      setCurrentFacingMode(newFacingMode);
+      addLog(`🎉 Camera switched to ${newFacingMode} (MAX QUALITY)`);
       return newStream;
       
     } catch (error: any) {
-      addLog(`❌ Camera refresh failed: ${error.message}`);
+      addLog(`❌ Camera switch failed: ${error.message}`);
       
       try {
         if (sessionRef.current.output?.live) {
@@ -479,25 +479,25 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const pauseSession = useCallback(() => {
     if (sessionRef.current) {
       sessionRef.current.pause();
-      addLog('⏸️ Session paused');
+      addLog('⏸️ MAX quality session paused');
     }
   }, [addLog]);
 
   const resumeSession = useCallback(() => {
     if (sessionRef.current) {
       sessionRef.current.play('live');
-      addLog('▶️ Session resumed');
+      addLog('▶️ MAX quality session resumed');
     }
   }, [addLog]);
 
   const cleanup = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
-      addLog('🔄 Stream stopped');
+      addLog('🔄 MAX quality stream stopped');
     }
     if (sessionRef.current) {
       sessionRef.current.pause();
-      addLog('⏸️ Session paused');
+      addLog('⏸️ MAX quality session paused');
     }
     isAttachedRef.current = false;
     containerRef.current = null;
@@ -514,9 +514,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
   return {
     cameraState,
-    currentFacingMode, // UI state only
+    currentFacingMode,
     initializeCameraKit,
-    switchCamera, // Now "refresh camera"
+    switchCamera,
     reloadLens,
     pauseSession,
     resumeSession,

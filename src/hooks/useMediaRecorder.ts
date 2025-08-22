@@ -1,13 +1,13 @@
-// src/hooks/useMediaRecorder.ts - Complete audio fix
+// src/hooks/useMediaRecorder.ts - MAX QUALITY recording untuk portrait 1440x2560
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { detectAndroid, detectiOS } from '../utils/androidRecorderFix';
 
 export type RecordingState = 'idle' | 'recording' | 'processing';
 
 /**
- * Enhanced MediaRecorder with proper audio handling
+ * Enhanced MediaRecorder dengan MAX QUALITY support
  */
-class EnhancedMediaRecorder {
+class MaxQualityMediaRecorder {
   private recorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
   private startTime: number = 0;
@@ -19,13 +19,13 @@ class EnhancedMediaRecorder {
   ) {}
 
   async start(): Promise<void> {
-    const options = this.getRecorderOptions();
+    const options = this.getMaxQualityRecorderOptions();
     
-    // Verify stream has both video and audio before recording
+    // Verify stream untuk max quality recording
     const videoTracks = this.stream.getVideoTracks();
     const audioTracks = this.stream.getAudioTracks();
     
-    this.addLog(`📊 Recording stream: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
+    this.addLog(`📊 MAX quality recording stream: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
     
     if (audioTracks.length === 0) {
       this.addLog(`🔇 WARNING: No audio tracks - recording will be SILENT!`);
@@ -46,17 +46,18 @@ class EnhancedMediaRecorder {
     };
     
     this.recorder.onstop = async () => {
-      await this.processRecording();
+      await this.processMaxQualityRecording();
     };
     
     this.recorder.onerror = (event) => {
       this.addLog(`❌ Recording error: ${event}`);
     };
     
-    // Start with small time slice for better audio sync
+    // Small time slice for better audio sync
     this.recorder.start(100);
     
-    this.addLog(`🎬 Recording started: ${options.mimeType || 'default'} with ${audioTracks.length} audio tracks`);
+    const platform = detectAndroid() ? 'Android' : detectiOS() ? 'iPhone' : 'Desktop';
+    this.addLog(`🎬 ${platform} MAX quality recording started: ${options.mimeType || 'default'} with ${audioTracks.length} audio tracks`);
   }
 
   stop(): void {
@@ -65,7 +66,7 @@ class EnhancedMediaRecorder {
     }
   }
 
-  private getRecorderOptions() {
+  private getMaxQualityRecorderOptions() {
     const isAndroid = detectAndroid();
     const isiOS = detectiOS();
     
@@ -79,44 +80,51 @@ class EnhancedMediaRecorder {
 
     for (const mimeType of formats) {
       if (MediaRecorder.isTypeSupported(mimeType)) {
+        // MAX QUALITY bitrates untuk 1440x2560
+        const isMaxQuality = mimeType.includes('mp4');
+        const videoBitrate = isMaxQuality ? 15000000 : 8000000; // 15Mbps vs 8Mbps
+        const audioBitrate = 256000; // High quality audio
+        
         this.addLog(`📱 Platform: ${isAndroid ? 'Android' : isiOS ? 'iPhone' : 'Desktop'}, Format: ${mimeType}`);
+        this.addLog(`🚀 MAX quality bitrates: ${videoBitrate/1000000}Mbps video, ${audioBitrate/1000}kbps audio`);
+        
         return {
           mimeType,
-          videoBitsPerSecond: 2500000,
-          audioBitsPerSecond: 128000 // Ensure audio bitrate is set
+          videoBitsPerSecond: videoBitrate,
+          audioBitsPerSecond: audioBitrate
         };
       }
     }
 
-    this.addLog('⚠️ No supported formats found, using default with audio');
+    this.addLog('⚠️ No supported formats found, using default with MAX audio');
     return { 
-      videoBitsPerSecond: 2500000,
-      audioBitsPerSecond: 128000
+      videoBitsPerSecond: 15000000, // Default to max
+      audioBitsPerSecond: 256000
     };
   }
 
-  private async processRecording(): Promise<void> {
+  private async processMaxQualityRecording(): Promise<void> {
     const endTime = Date.now();
     const actualDurationMs = endTime - this.startTime;
     const actualDurationSeconds = Math.max(1, Math.floor(actualDurationMs / 1000));
     
-    this.addLog(`📊 Processing: ${this.chunks.length} chunks, ${actualDurationSeconds}s`);
+    this.addLog(`📊 Processing MAX quality: ${this.chunks.length} chunks, ${actualDurationSeconds}s`);
     
     const mimeType = this.recorder?.mimeType || 'video/mp4';
     let blob = new Blob(this.chunks, { type: mimeType });
     
-    // Apply binary MP4 duration fix for Instagram compatibility
+    // Apply binary MP4 duration fix untuk Instagram compatibility
     if (mimeType.includes('mp4')) {
       blob = await this.fixMP4Duration(blob, actualDurationSeconds);
     }
     
-    const filename = `video_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+    const filename = `max_quality_video_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
     const file = new File([blob], filename, {
       type: blob.type,
       lastModified: Date.now()
     });
     
-    // Enhanced metadata
+    // Enhanced metadata dengan max quality info
     (file as any).recordingDuration = actualDurationSeconds;
     (file as any).actualDurationMs = actualDurationMs;
     (file as any).fixedMetadata = mimeType.includes('mp4');
@@ -126,13 +134,17 @@ class EnhancedMediaRecorder {
     (file as any).processingMethod = mimeType.includes('mp4') ? 'binary-mp4-fix' : 'original';
     (file as any).platformOptimized = true;
     (file as any).hasAudioTrack = this.stream.getAudioTracks().length > 0;
+    (file as any).isMaxQuality = true;
+    (file as any).expectedResolution = '1440x2560'; // Portrait dari rotated landscape
+    (file as any).qualityProfile = 'MAX_PORTRAIT';
     
-    this.addLog(`✅ Recording complete: ${actualDurationSeconds}s, ${this.formatSize(file.size)}, audio: ${(file as any).hasAudioTrack}`);
+    const platform = detectAndroid() ? 'Android' : detectiOS() ? 'iPhone' : 'Desktop';
+    this.addLog(`✅ ${platform} MAX quality complete: ${actualDurationSeconds}s, ${this.formatSize(file.size)}, audio: ${(file as any).hasAudioTrack}`);
     this.onComplete(file);
   }
 
   /**
-   * Binary MP4 duration fix for Instagram compatibility
+   * Binary MP4 duration fix untuk Instagram compatibility
    */
   private async fixMP4Duration(blob: Blob, durationSeconds: number): Promise<Blob> {
     try {
@@ -147,7 +159,7 @@ class EnhancedMediaRecorder {
       const mdhdFixed = this.fixMDHDDurations(view, uint8Array, durationSeconds);
       
       if (mvhdFixed || tkhdFixed || mdhdFixed) {
-        this.addLog(`✅ MP4 duration headers fixed`);
+        this.addLog(`✅ MP4 duration headers fixed for MAX quality`);
         return new Blob([uint8Array], { type: 'video/mp4' });
       } else {
         this.addLog(`⚠️ No MP4 headers found to fix`);
@@ -282,7 +294,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
   const [recordingTime, setRecordingTime] = useState<number>(0);
   const [recordedVideo, setRecordedVideo] = useState<Blob | File | null>(null);
 
-  const enhancedRecorderRef = useRef<EnhancedMediaRecorder | null>(null);
+  const maxQualityRecorderRef = useRef<MaxQualityMediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
   const recordingStartTimeRef = useRef<number>(0);
 
@@ -298,7 +310,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
       
       try {
         canvasStream = canvas.captureStream(30);
-        addLog(`✅ Canvas stream: ${canvas.width}x${canvas.height}@30fps`);
+        addLog(`✅ MAX quality canvas stream: ${canvas.width}x${canvas.height}@30fps`);
       } catch (streamError) {
         canvasStream = canvas.captureStream();
         addLog(`⚠️ Using default canvas capture: ${streamError}`);
@@ -312,31 +324,33 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
           // Clone the audio track to avoid conflicts
           const clonedAudioTrack = audioTrack.clone();
           canvasStream.addTrack(clonedAudioTrack);
-          addLog(`✅ Audio track added: ${audioTrack.label || 'Microphone'}`);
+          addLog(`✅ MAX quality audio track added: ${audioTrack.label || 'Microphone'}`);
           
           // Apply audio constraints for better quality
           if (clonedAudioTrack.applyConstraints) {
             clonedAudioTrack.applyConstraints({
               echoCancellation: true,
               noiseSuppression: true,
-              autoGainControl: true
+              autoGainControl: true,
+              sampleRate: 48000,
+              channelCount: 2
             }).catch(e => addLog(`⚠️ Audio constraints failed: ${e}`));
           }
         } else {
           addLog(`❌ Audio track not usable: readyState=${audioTrack.readyState}, enabled=${audioTrack.enabled}`);
         }
       } else {
-        addLog(`🔇 WARNING: No audio stream provided - recording will be SILENT!`);
+        addLog(`🔇 WARNING: No audio stream provided - MAX quality recording will be SILENT!`);
       }
 
       // Final verification of combined stream
       const finalVideoTracks = canvasStream.getVideoTracks();
       const finalAudioTracks = canvasStream.getAudioTracks();
       
-      addLog(`📊 Final recording stream: ${finalVideoTracks.length} video, ${finalAudioTracks.length} audio tracks`);
+      addLog(`📊 Final MAX quality recording stream: ${finalVideoTracks.length} video, ${finalAudioTracks.length} audio tracks`);
       
       if (finalAudioTracks.length === 0) {
-        addLog(`🔇 FINAL WARNING: Recording will be SILENT - no audio tracks in final stream!`);
+        addLog(`🔇 FINAL WARNING: MAX quality recording will be SILENT - no audio tracks in final stream!`);
       }
 
       if (finalVideoTracks.length === 0) {
@@ -345,23 +359,26 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
 
       recordingStartTimeRef.current = performance.now();
 
-      enhancedRecorderRef.current = new EnhancedMediaRecorder(
+      maxQualityRecorderRef.current = new MaxQualityMediaRecorder(
         canvasStream,
         (file: File) => {
           const endTime = performance.now();
           const actualDurationMs = endTime - recordingStartTimeRef.current;
           const actualDurationSeconds = Math.floor(actualDurationMs / 1000);
           
-          // Enhanced metadata with audio info
+          // Enhanced metadata with MAX quality info
           (file as any).recordingStartTime = recordingStartTimeRef.current;
           (file as any).recordingEndTime = endTime;
           (file as any).canvasWidth = canvas.width;
           (file as any).canvasHeight = canvas.height;
           (file as any).hasAudioTrack = finalAudioTracks.length > 0;
           (file as any).audioTrackCount = finalAudioTracks.length;
+          (file as any).isMaxQualityRecording = true;
+          (file as any).canvasResolution = `${canvas.width}x${canvas.height}`;
           
           const platform = detectAndroid() ? 'Android' : detectiOS() ? 'iPhone' : 'Desktop';
-          addLog(`✅ ${platform} recording complete: ${actualDurationSeconds}s with ${finalAudioTracks.length > 0 ? 'AUDIO' : 'NO AUDIO'}`);
+          const qualityIndicator = canvas.width >= 1440 ? 'MAX QUALITY' : 'SCALED';
+          addLog(`✅ ${platform} ${qualityIndicator} recording complete: ${actualDurationSeconds}s with ${finalAudioTracks.length > 0 ? 'AUDIO' : 'NO AUDIO'}`);
           
           setRecordedVideo(file);
           setRecordingState('idle');
@@ -369,29 +386,30 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
         addLog
       );
 
-      enhancedRecorderRef.current.start();
+      maxQualityRecorderRef.current.start();
       setRecordingState('recording');
       
       const platform = detectAndroid() ? 'Android' : detectiOS() ? 'iPhone' : 'Desktop';
-      addLog(`🎬 ${platform} recording started - Audio tracks: ${finalAudioTracks.length}`);
+      const qualityMode = canvas.width >= 1440 ? 'MAX QUALITY' : 'SCALED';
+      addLog(`🎬 ${platform} ${qualityMode} recording started - Audio tracks: ${finalAudioTracks.length}`);
       return true;
 
     } catch (error) {
-      addLog(`❌ Recording start failed: ${error}`);
+      addLog(`❌ MAX quality recording start failed: ${error}`);
       setRecordingState('idle');
       return false;
     }
   }, [addLog]);
 
   const stopRecording = useCallback(() => {
-    if (enhancedRecorderRef.current && recordingState === 'recording') {
-      const recorder = enhancedRecorderRef.current;
+    if (maxQualityRecorderRef.current && recordingState === 'recording') {
+      const recorder = maxQualityRecorderRef.current;
       const recorderState = recorder.getState();
       
       if (recorderState === 'recording') {
         recorder.stop();
         setRecordingState('processing');
-        addLog('⏹️ Recording stopped, processing...');
+        addLog('⏹️ MAX quality recording stopped, processing...');
       } else {
         addLog(`⚠️ Recorder not in recording state: ${recorderState}`);
         setRecordingState('idle');
@@ -408,12 +426,15 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
       }
     } else if (recordingState === 'idle') {
       if (!canvas) {
-        addLog('❌ Canvas required for recording');
+        addLog('❌ Canvas required for MAX quality recording');
         return;
       }
       
-      if (canvas.width < 640 || canvas.height < 480) {
-        addLog(`⚠️ Canvas resolution low: ${canvas.width}x${canvas.height}`);
+      if (canvas.width < 1080 || canvas.height < 1920) {
+        addLog(`⚠️ Canvas resolution: ${canvas.width}x${canvas.height} (expected ≥1080x1920)`);
+      } else {
+        const qualityMode = canvas.width >= 1440 ? 'MAX QUALITY' : 'SCALED';
+        addLog(`📐 Canvas ready for ${qualityMode}: ${canvas.width}x${canvas.height}`);
       }
       
       // Debug audio stream before recording
@@ -424,12 +445,12 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
           addLog(`   Track ${i}: ${track.label || 'Unknown'}, state: ${track.readyState}, enabled: ${track.enabled}`);
         });
       } else {
-        addLog('🔇 No audio stream provided to recording!');
+        addLog('🔇 No audio stream provided to MAX quality recording!');
       }
       
       const success = startRecording(canvas, audioStream);
       if (!success) {
-        addLog('❌ Failed to start recording');
+        addLog('❌ Failed to start MAX quality recording');
       }
     }
   }, [recordingState, recordingTime, startRecording, stopRecording, addLog]);
@@ -439,22 +460,22 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
     setRecordingTime(0);
     setRecordingState('idle');
     recordingStartTimeRef.current = 0;
-    addLog('🗑️ Recording cleared');
+    addLog('🗑️ MAX quality recording cleared');
   }, [addLog]);
 
   const cleanup = useCallback(() => {
-    if (enhancedRecorderRef.current) {
-      const recorderState = enhancedRecorderRef.current.getState();
+    if (maxQualityRecorderRef.current) {
+      const recorderState = maxQualityRecorderRef.current.getState();
       if (recorderState === 'recording') {
-        enhancedRecorderRef.current.stop();
+        maxQualityRecorderRef.current.stop();
       }
-      enhancedRecorderRef.current = null;
+      maxQualityRecorderRef.current = null;
     }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    addLog('🧹 MediaRecorder cleanup complete');
+    addLog('🧹 MAX quality MediaRecorder cleanup complete');
   }, [addLog]);
 
   // Recording timer
@@ -464,9 +485,9 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
         setRecordingTime(prev => {
           const newTime = prev + 1;
           
-          if (newTime % 5 === 0 && enhancedRecorderRef.current) {
-            const state = enhancedRecorderRef.current.getState();
-            addLog(`📊 Recording: ${newTime}s, state: ${state}`);
+          if (newTime % 5 === 0 && maxQualityRecorderRef.current) {
+            const state = maxQualityRecorderRef.current.getState();
+            addLog(`📊 MAX quality recording: ${newTime}s, state: ${state}`);
           }
           
           return newTime;
