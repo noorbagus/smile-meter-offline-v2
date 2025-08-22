@@ -124,19 +124,7 @@ const applyAntiPixelatedStyling = (
     -webkit-touch-callout: none;
   `;
   
-  const gl = canvas.getContext('webgl2', {
-    antialias: true,
-    premultipliedAlpha: false,
-    preserveDrawingBuffer: false,
-    powerPreference: 'high-performance',
-    alpha: true,
-    depth: false,
-    stencil: false
-  });
-  
-  if (gl) {
-    gl.hint(gl.GENERATE_MIPMAP_HINT, gl.NICEST);
-  }
+  // Removed WebGL context access - Canvas is controlled by Snap Camera Kit OffscreenCanvas
 };
 
 // Main Hook
