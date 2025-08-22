@@ -1,4 +1,4 @@
-// src/hooks/useCameraPermissions.ts - No facingMode, always highest resolution
+// src/hooks/useCameraPermissions.ts - FORCE EXACT 4K constraints
 import { useState, useCallback } from 'react';
 
 export type PermissionState = 'checking' | 'granted' | 'denied' | 'prompt';
@@ -104,68 +104,74 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
   }, [addLog, checkHTTPS, checkMediaDeviceSupport, checkPermissionAPI]);
 
   const requestCameraStream = useCallback(async (
-    _facingMode?: 'user' | 'environment', // Ignored, kept for compatibility
+    facingMode: 'user' | 'environment' = 'user',
     includeAudio: boolean = true
   ): Promise<MediaStream | null> => {
     try {
-      addLog('📸 Requesting HIGHEST RESOLUTION camera stream (no facing preference)...');
+      addLog('📸 FORCE EXACT: Requesting 4K landscape camera stream...');
       
-      // FORCE EXACT RESOLUTION - no browser auto-crop
-      const constraints: MediaStreamConstraints = {
+      // FORCE EXACT constraints - no fallback!
+      const exactConstraints: MediaStreamConstraints = {
         video: { 
-          // facingMode removed - let browser pick best camera
-          width: { exact: 2560 },      // Force exact landscape resolution
-          height: { exact: 1440 },     // No browser cropping
-          frameRate: { ideal: 30, min: 15, max: 60 }
+          facingMode,
+          // FORCE EXACT 4K landscape - no compromise!
+          width: { exact: 2560 },
+          height: { exact: 1440 },
+          frameRate: { exact: 30 }
         },
         audio: includeAudio ? {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: { ideal: 48000 },
-          channelCount: { ideal: 2 }
+          sampleRate: { exact: 48000 },
+          channelCount: { exact: 2 }
         } : false
       };
 
-      addLog(`🎤 Audio requested: ${includeAudio ? 'YES with high-quality constraints' : 'NO'}`);
-      addLog(`📐 EXACT resolution constraints: ${(constraints.video as any).width.exact}x${(constraints.video as any).height.exact} (no browser cropping)`);
-      addLog(`🔄 Will software-rotate landscape camera for portrait display`);
+      addLog(`🎤 Audio requested: ${includeAudio ? 'YES with EXACT 48kHz stereo' : 'NO'}`);
+      addLog(`🎯 FORCE EXACT: 2560×1440@30fps (NO FALLBACK)`);
       
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(exactConstraints);
       
-      // Verify stream quality
+      // Verify we got EXACT resolution
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
       
-      addLog(`✅ Stream obtained: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
+      addLog(`✅ EXACT stream obtained: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
       
       if (includeAudio && audioTracks.length === 0) {
         addLog('⚠️ WARNING: Audio requested but no audio tracks received!');
       }
       
-      // Log detailed track info
+      // CRITICAL: Verify exact resolution achieved
       videoTracks.forEach((track, index) => {
         const settings = track.getSettings();
-        const resolution = `${settings.width || 'unknown'}x${settings.height || 'unknown'}`;
-        const isHighRes = (settings.width || 0) >= 2560;
-        const isLandscape = (settings.width || 0) > (settings.height || 0);
+        const actualWidth = settings.width || 0;
+        const actualHeight = settings.height || 0;
+        const actualFPS = settings.frameRate || 0;
         
         addLog(`📹 Video track ${index}: ${track.label || 'Camera'}`);
-        addLog(`   - Resolution: ${resolution}@${settings.frameRate}fps`);
-        addLog(`   - Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
-        addLog(`   - Quality: ${isHighRes ? 'HIGH-RES ✅' : 'STANDARD'}`);
-        addLog(`   - Device: ${track.label || 'Unknown Camera'}`);
+        addLog(`   - EXACT Resolution: ${actualWidth}×${actualHeight}@${actualFPS}fps`);
+        addLog(`   - Facing: ${settings.facingMode}`);
         
-        if (!isLandscape) {
-          addLog(`⚠️ Got portrait ${resolution} - may be rotated by browser`);
+        // Verify we got EXACT 4K
+        if (actualWidth === 2560 && actualHeight === 1440) {
+          addLog(`✅ SUCCESS: Got EXACT 4K landscape!`);
+        } else {
+          addLog(`❌ FAILED: Expected 2560×1440, got ${actualWidth}×${actualHeight}`);
+          addLog(`🚨 WebRTC EXACT constraints rejected by browser/hardware`);
         }
+        
+        // Check if landscape orientation achieved
+        const isLandscape = actualWidth > actualHeight;
+        addLog(`🔄 Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
       });
       
       audioTracks.forEach((track, index) => {
         const settings = track.getSettings();
         addLog(`🎤 Audio track ${index}: ${track.label || 'Microphone'}`);
         addLog(`   - State: ${track.readyState}, Enabled: ${track.enabled}`);
-        addLog(`   - Sample rate: ${settings.sampleRate}Hz, Channels: ${settings.channelCount}`);
+        addLog(`   - EXACT Sample rate: ${settings.sampleRate}Hz, Channels: ${settings.channelCount}`);
       });
       
       setPermissionState('granted');
@@ -173,9 +179,55 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       return stream;
 
     } catch (streamError: any) {
-      addLog(`❌ Highest resolution camera stream failed: ${streamError.name} - ${streamError.message}`);
+      addLog(`❌ FORCE EXACT constraints FAILED: ${streamError.name} - ${streamError.message}`);
       
-      if (streamError.name === 'NotAllowedError') {
+      if (streamError.name === 'OverconstrainedError') {
+        addLog(`🚨 EXACT constraints TOO STRICT for this device/browser`);
+        addLog(`📱 Browser/WebRTC cannot provide EXACT 2560×1440@30fps`);
+        
+        // Fallback to ideal constraints
+        addLog(`🔄 Falling back to IDEAL constraints...`);
+        
+        try {
+          const fallbackConstraints: MediaStreamConstraints = {
+            video: { 
+              facingMode,
+              // Fallback to ideal with reasonable range
+              width: { ideal: 2560, min: 1280, max: 3840 },
+              height: { ideal: 1440, min: 720, max: 2160 },
+              frameRate: { ideal: 30, min: 15, max: 60 }
+            },
+            audio: includeAudio ? {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              sampleRate: { ideal: 48000 },
+              channelCount: { ideal: 2 }
+            } : false
+          };
+          
+          const fallbackStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+          
+          const fallbackVideo = fallbackStream.getVideoTracks()[0];
+          const fallbackSettings = fallbackVideo?.getSettings();
+          const fallbackRes = `${fallbackSettings?.width}×${fallbackSettings?.height}`;
+          
+          addLog(`✅ FALLBACK successful: ${fallbackRes}@${fallbackSettings?.frameRate}fps`);
+          addLog(`⚠️ Could not achieve EXACT 4K - WebRTC browser limitation`);
+          
+          setPermissionState('granted');
+          setErrorInfo(null);
+          return fallbackStream;
+          
+        } catch (fallbackError) {
+          addLog(`❌ Fallback also failed: ${fallbackError}`);
+          setErrorInfo({
+            type: 'device',
+            message: 'Camera constraints not supported - even fallback failed',
+            solution: 'Device/browser has severe WebRTC limitations'
+          });
+        }
+      } else if (streamError.name === 'NotAllowedError') {
         setPermissionState('denied');
         setErrorInfo({
           type: 'permission',
@@ -194,37 +246,6 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
           message: 'Camera not supported in this browser',
           solution: 'Please try using Chrome, Firefox, Safari, or Edge'
         });
-      } else if (streamError.name === 'OverconstrainedError') {
-        addLog('⚠️ Exact resolution constraints failed, trying flexible fallback...');
-        
-        // Flexible fallback with ideal constraints
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-              // Fallback to flexible constraints
-              width: { ideal: 2560, min: 1280, max: 3840 },
-              height: { ideal: 1440, min: 720, max: 2160 }
-            },
-            audio: includeAudio
-          });
-          
-          const fallbackVideo = fallbackStream.getVideoTracks()[0];
-          const fallbackSettings = fallbackVideo?.getSettings();
-          const fallbackRes = `${fallbackSettings?.width}x${fallbackSettings?.height}`;
-          
-          addLog(`✅ HD fallback successful: ${fallbackRes}`);
-          setPermissionState('granted');
-          setErrorInfo(null);
-          return fallbackStream;
-          
-        } catch (fallbackError) {
-          addLog(`❌ HD fallback also failed: ${fallbackError}`);
-          setErrorInfo({
-            type: 'device',
-            message: 'Camera constraints not supported',
-            solution: 'Try using a different browser or device'
-          });
-        }
       } else {
         setErrorInfo({
           type: 'unknown',
@@ -239,13 +260,14 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
 
   const requestPermission = useCallback(async (): Promise<MediaStream | null> => {
     try {
-      addLog('🔒 Manually requesting HIGHEST RESOLUTION camera + microphone permission...');
+      addLog('🔒 Manually requesting EXACT 4K camera + microphone permission...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
-          // No facingMode for permission check
-          width: { ideal: 2560, min: 640 },
-          height: { ideal: 1440, min: 480 }
+          facingMode: 'user',
+          // EXACT for permission check too
+          width: { exact: 2560 },
+          height: { exact: 1440 }
         },
         audio: true
       });
@@ -253,10 +275,11 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
       const videoSettings = videoTracks[0]?.getSettings();
-      const resolution = `${videoSettings?.width}x${videoSettings?.height}`;
-      const isLandscape = (videoSettings?.width || 0) > (videoSettings?.height || 0);
+      const resolution = `${videoSettings?.width}×${videoSettings?.height}`;
+      const isExact4K = videoSettings?.width === 2560 && videoSettings?.height === 1440;
       
-      addLog(`✅ Permission granted: ${resolution} ${isLandscape ? '(LANDSCAPE)' : '(PORTRAIT)'}, ${audioTracks.length} audio tracks`);
+      addLog(`✅ Permission granted: ${resolution}, ${audioTracks.length} audio tracks`);
+      addLog(`🎯 EXACT 4K achieved: ${isExact4K ? 'YES ✅' : 'NO ❌'}`);
       
       // Stop immediately after permission check
       stream.getTracks().forEach(track => track.stop());
@@ -266,12 +289,17 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       
       return stream;
     } catch (error: any) {
-      addLog(`❌ Permission request failed: ${error.message}`);
+      addLog(`❌ EXACT permission request failed: ${error.message}`);
+      
+      if (error.name === 'OverconstrainedError') {
+        addLog(`🚨 Device cannot provide EXACT 4K even for permission check`);
+      }
+      
       setPermissionState('denied');
       setErrorInfo({
         type: 'permission',
-        message: 'Camera/microphone permission denied',
-        solution: 'Please enable camera and microphone access in browser settings'
+        message: 'Camera/microphone permission denied or constraints too strict',
+        solution: 'Enable camera access or device has WebRTC limitations'
       });
       
       return null;
