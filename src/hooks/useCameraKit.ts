@@ -155,7 +155,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         addLog(`📊 Canvas: ${canvas.width}x${canvas.height} (Portrait Mode)`);
         
         // PORTRAIT MODE - Always rotate 90°
-        const rotationTransform = 'rotate(90deg)';
+        const rotationTransform = 'rotate(270deg)';
         
         addLog(`🔄 Portrait mode: ALWAYS rotate 90°`);
         
