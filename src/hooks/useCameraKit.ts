@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Clean adaptive resolution implementation
+// src/hooks/useCameraKit.ts - Fixed camera texture quality
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { createAdaptiveCameraKitConfig, validateConfig } from '../config/cameraKit';
@@ -96,7 +96,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           displayWidth = containerRect.height * canvasAspect;
         }
         
-        // Perfect fit CSS
+        // HIGH QUALITY CSS for smooth camera texture
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
@@ -107,7 +107,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           object-fit: contain;
           object-position: center;
           background: transparent;
-          image-rendering: crisp-edges;
+          image-rendering: auto;
+          image-rendering: -webkit-optimize-contrast;
+          filter: contrast(1.05);
           will-change: transform;
           backface-visibility: hidden;
         `;
@@ -246,8 +248,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         });
         
         await withTimeout(sessionRef.current.setSource(source), 3000);
-        await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
-        addLog(`✅ Adaptive render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
+        
+        // Match AR processing to camera resolution for better quality
+        const videoTrack = stream.getVideoTracks()[0];
+        const settings = videoTrack.getSettings();
+        await source.setRenderSize(
+          settings.width || adaptiveConfig.canvas.width,
+          settings.height || adaptiveConfig.canvas.height
+        );
+        addLog(`✅ High-quality render: ${settings.width}x${settings.height}`);
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -264,7 +273,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit with adaptive resolution...');
+      addLog('🎭 Initializing Camera Kit with high-quality rendering...');
       addLog(`📐 Adaptive canvas: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
       setCameraState('initializing');
       containerRef.current = containerReference;
@@ -304,8 +313,14 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       await withTimeout(session.setSource(source), 3000);
       addLog('✅ Camera source configured');
 
-      await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
-      addLog(`✅ Adaptive AR render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
+      // High-quality AR rendering - match camera resolution
+      const videoTrack = stream.getVideoTracks()[0];
+      const settings = videoTrack.getSettings();
+      await source.setRenderSize(
+        settings.width || adaptiveConfig.canvas.width,
+        settings.height || adaptiveConfig.canvas.height
+      );
+      addLog(`✅ High-quality AR render: ${settings.width}x${settings.height}`);
 
       if (!lensRepositoryRef.current) {
         try {
@@ -335,13 +350,13 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
-          addLog('🎥 Attaching adaptive output...');
+          addLog('🎥 Attaching high-quality output...');
           attachCameraOutput(session.output.live, containerReference);
         }
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Adaptive Camera Kit complete');
+      addLog('🎉 High-quality Camera Kit complete');
       return true;
 
     } catch (error: any) {
@@ -377,12 +392,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // LANDSCAPE constraints for camera switch (match Brio hardware)
+      // LANDSCAPE constraints for camera switch
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: newFacingMode,
-            // Request LANDSCAPE to match hardware sensor
             width: { ideal: 2560, min: 1280, max: 3840 },
             height: { ideal: 1440, min: 720, max: 2160 },
             frameRate: { ideal: 30, min: 15, max: 60 }
@@ -398,10 +412,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         5000
       );
 
-      addLog(`✅ New ${newFacingMode} LANDSCAPE stream obtained`);
+      addLog(`✅ New ${newFacingMode} stream obtained`);
       streamRef.current = newStream;
 
-      // Log new stream details with orientation check
       const videoTracks = newStream.getVideoTracks();
       const audioTracks = newStream.getAudioTracks();
       
@@ -412,10 +425,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         addLog(`📹 New stream: ${resolution}@${settings.frameRate}fps`);
         addLog(`🔄 Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
-        
-        if (!isLandscape) {
-          addLog(`⚠️ Expected landscape, got portrait - browser may have auto-rotated`);
-        }
       }
       
       addLog(`🎤 Audio tracks: ${audioTracks.length}`);
@@ -428,10 +437,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       await withTimeout(sessionRef.current.setSource(source), 3000);
       addLog('✅ Source set');
 
-      const config = currentConfigRef.current;
-      if (config) {
-        await source.setRenderSize(config.canvas.width, config.canvas.height);
-        addLog(`✅ Adaptive render: ${config.canvas.width}x${config.canvas.height}`);
+      // High-quality rendering for new camera
+      const videoSettings = videoTracks[0]?.getSettings();
+      if (videoSettings) {
+        await source.setRenderSize(videoSettings.width || 1280, videoSettings.height || 720);
+        addLog(`✅ High-quality render: ${videoSettings.width}x${videoSettings.height}`);
       }
 
       await new Promise(resolve => setTimeout(resolve, 300));
