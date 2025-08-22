@@ -370,6 +370,9 @@ const CameraApp: React.FC = () => {
         onClose={() => setShowSettings(false)}
         debugLogs={debugLogs}
         onExportLogs={exportLogs}
+        currentStream={getStream()}          // REAL current stream
+        canvas={getCanvas()}                 // REAL canvas element  
+        containerRef={cameraFeedRef}         // REAL container ref
       />
 
       <RenderingModal
