@@ -1,22 +1,90 @@
-// src/config/cameraKit.ts - Fixed 4K optimized configuration
+// src/config/cameraKit.ts - Adaptive resolution fix
 import type { CameraKitConfig } from '../types/camera';
 
-// Environment variables with fallback values
 const API_TOKEN = import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI';
 
 const LENS_ID = import.meta.env.VITE_CAMERA_KIT_LENS_ID || '04441cd2-8e9d-420b-b293-90b5df8f577f';
-
 const LENS_GROUP_ID = import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || 'cd5b1b49-4483-45ea-9772-cb241939e2ce';
 
+/**
+ * Detect optimal canvas resolution based on container and device capability
+ */
+export const getOptimalCanvasSize = (containerRef?: React.RefObject<HTMLDivElement>) => {
+  // Get container dimensions if available
+  let containerWidth = window.innerWidth;
+  let containerHeight = window.innerHeight;
+  
+  if (containerRef?.current) {
+    const rect = containerRef.current.getBoundingClientRect();
+    containerWidth = rect.width;
+    containerHeight = rect.height;
+  }
+  
+  // Apply device pixel ratio for crisp rendering
+  const dpr = window.devicePixelRatio || 1;
+  const physicalWidth = Math.round(containerWidth * dpr);
+  const physicalHeight = Math.round(containerHeight * dpr);
+  
+  // Cap at reasonable max for performance
+  const maxWidth = 1920;
+  const maxHeight = 1920;
+  
+  const optimalWidth = Math.min(physicalWidth, maxWidth);
+  const optimalHeight = Math.min(physicalHeight, maxHeight);
+  
+  console.log('🎯 Optimal canvas:', {
+    container: `${containerWidth}x${containerHeight}`,
+    dpr,
+    physical: `${physicalWidth}x${physicalHeight}`,
+    optimal: `${optimalWidth}x${optimalHeight}`
+  });
+  
+  return {
+    width: optimalWidth,
+    height: optimalHeight
+  };
+};
+
+/**
+ * Create adaptive Camera Kit config based on container
+ */
+export const createAdaptiveCameraKitConfig = (containerRef?: React.RefObject<HTMLDivElement>): CameraKitConfig => {
+  const canvasSize = getOptimalCanvasSize(containerRef);
+  
+  return {
+    apiToken: API_TOKEN,
+    lensId: LENS_ID,
+    lensGroupId: LENS_GROUP_ID,
+    
+    // ADAPTIVE canvas size - matches container
+    canvas: {
+      width: canvasSize.width,
+      height: canvasSize.height
+    },
+    
+    camera: {
+      facingMode: 'user',
+      audio: true
+    },
+    
+    // Adaptive bitrate based on resolution
+    recording: {
+      mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      videoBitsPerSecond: Math.min(15000000, canvasSize.width * canvasSize.height * 0.1) // Scale with resolution
+    }
+  };
+};
+
+// Static fallback config (for backward compatibility)
 export const CAMERA_KIT_CONFIG: CameraKitConfig = {
   apiToken: API_TOKEN,
   lensId: LENS_ID,
   lensGroupId: LENS_GROUP_ID,
   
-  // PORTRAIT 4K canvas (9:16 ratio)
+  // Default to screen size
   canvas: {
-    width: 2160,   // Portrait width
-    height: 3840   // Portrait height
+    width: Math.round(window.innerWidth * (window.devicePixelRatio || 1)),
+    height: Math.round(window.innerHeight * (window.devicePixelRatio || 1))
   },
   
   camera: {
@@ -24,20 +92,19 @@ export const CAMERA_KIT_CONFIG: CameraKitConfig = {
     audio: true
   },
   
-  // High bitrate for 4K portrait recording
   recording: {
     mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-    videoBitsPerSecond: 15000000 // 15Mbps for 4K
+    videoBitsPerSecond: 8000000 // Conservative default
   }
 };
 
-// Portrait 4K display configuration
-export const DISPLAY_CONFIG = {
+// Display config (adaptive)
+export const getAdaptiveDisplayConfig = (canvasWidth: number, canvasHeight: number) => ({
   canvas: {
-    width: 2160,    // Portrait width
-    height: 3840,   // Portrait height
-    aspectRatio: 9 / 16,  // Portrait ratio
-    pixelRatio: 1
+    width: canvasWidth,
+    height: canvasHeight,
+    aspectRatio: canvasWidth / canvasHeight,
+    pixelRatio: window.devicePixelRatio || 1
   },
   rendering: {
     antialias: true,
@@ -50,12 +117,12 @@ export const DISPLAY_CONFIG = {
     objectPosition: 'center' as const,
     imageRendering: 'crisp-edges' as const
   }
-};
+});
 
-// AR processing configuration (optimized for performance)
+// AR processing config (performance-optimized)
 export const AR_PROCESSING_CONFIG = {
   renderSize: {
-    width: 1080,  // Portrait HD processing
+    width: 1080,
     height: 1920
   },
   frameRate: 30,
@@ -65,64 +132,40 @@ export const AR_PROCESSING_CONFIG = {
 export const validateConfig = (): boolean => {
   const { apiToken, lensId, lensGroupId } = CAMERA_KIT_CONFIG;
   
-  // Log configuration for debugging
   if (import.meta.env.MODE === 'development') {
-    console.log('🔧 Portrait 4K Camera Kit Config:', {
+    console.log('🔧 Adaptive Camera Kit Config:', {
       hasApiToken: !!apiToken,
-      apiTokenLength: apiToken?.length,
-      lensId: lensId,
-      lensGroupId: lensGroupId,
+      lensId,
+      lensGroupId,
       canvasRes: `${CAMERA_KIT_CONFIG.canvas.width}x${CAMERA_KIT_CONFIG.canvas.height}`,
-      arRes: `${AR_PROCESSING_CONFIG.renderSize.width}x${AR_PROCESSING_CONFIG.renderSize.height}`,
-      videoBitrate: `${CAMERA_KIT_CONFIG.recording.videoBitsPerSecond / 1000000}Mbps`,
       environment: import.meta.env.MODE
     });
   }
   
   if (!apiToken || apiToken === 'YOUR_API_TOKEN_HERE') {
-    throw new Error('API Token is required. Please check your environment variables.');
+    throw new Error('API Token is required.');
   }
   
   if (!lensId || lensId === 'YOUR_LENS_ID_HERE') {
-    throw new Error('Lens ID is required. Please check your environment variables.');
+    throw new Error('Lens ID is required.');
   }
   
   if (!lensGroupId || lensGroupId === 'YOUR_LENS_GROUP_ID_HERE') {
-    throw new Error('Lens Group ID is required. Please check your environment variables.');
-  }
-  
-  // Validate token format (basic JWT check)
-  if (!apiToken.includes('.') || apiToken.split('.').length !== 3) {
-    throw new Error('Invalid API Token format. Please check your token.');
+    throw new Error('Lens Group ID is required.');
   }
   
   return true;
 };
 
-// Helper function to get current configuration
-export const getCurrentConfig = () => {
-  return {
-    isProduction: import.meta.env.PROD,
-    isDevelopment: import.meta.env.DEV,
-    mode: import.meta.env.MODE,
-    hasEnvToken: !!import.meta.env.VITE_CAMERA_KIT_API_TOKEN,
-    hasEnvLensId: !!import.meta.env.VITE_CAMERA_KIT_LENS_ID,
-    hasEnvGroupId: !!import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID,
-    config: CAMERA_KIT_CONFIG,
-    display: DISPLAY_CONFIG,
-    arProcessing: AR_PROCESSING_CONFIG
-  };
-};
-
-// Portrait 4K camera constraints
+// Helper untuk 4K camera constraints
 export const get4KCameraConstraints = (
   facingMode: 'user' | 'environment' = 'user'
 ): MediaStreamConstraints => {
   return {
     video: {
       facingMode,
-      width: { ideal: 2160, min: 720, max: 2160 },
-      height: { ideal: 3840, min: 1280, max: 3840 },
+      width: { ideal: 2560, min: 720, max: 3840 },
+      height: { ideal: 1440, min: 480, max: 2160 },
       frameRate: { ideal: 30, min: 15, max: 60 }
     },
     audio: {
@@ -135,10 +178,10 @@ export const get4KCameraConstraints = (
   };
 };
 
-// Portrait 4K recording format
+// Recording format yang optimal
 export const getOptimalRecordingFormat = () => {
   const formats = [
-    'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
     'video/mp4;codecs=h264,aac',
     'video/mp4',
     'video/webm;codecs=vp9,opus',
@@ -149,14 +192,14 @@ export const getOptimalRecordingFormat = () => {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) {
       return {
         mimeType,
-        videoBitsPerSecond: 15000000, // 15Mbps for 4K
+        videoBitsPerSecond: 8000000,
         audioBitsPerSecond: 256000
       };
     }
   }
 
   return {
-    videoBitsPerSecond: 15000000,
+    videoBitsPerSecond: 8000000,
     audioBitsPerSecond: 256000
   };
 };
