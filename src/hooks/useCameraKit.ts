@@ -377,21 +377,48 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
+      // LANDSCAPE constraints for camera switch (match Brio hardware)
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: newFacingMode,
-            width: { ideal: 2560, min: 720 },
-            height: { ideal: 1440, min: 480 },
-            frameRate: { ideal: 30 }
+            // Request LANDSCAPE to match hardware sensor
+            width: { ideal: 2560, min: 1280, max: 3840 },
+            height: { ideal: 1440, min: 720, max: 2160 },
+            frameRate: { ideal: 30, min: 15, max: 60 }
           },
-          audio: true
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: { ideal: 48000 },
+            channelCount: { ideal: 2 }
+          }
         }),
         5000
       );
 
-      addLog(`✅ New ${newFacingMode} stream obtained`);
+      addLog(`✅ New ${newFacingMode} LANDSCAPE stream obtained`);
       streamRef.current = newStream;
+
+      // Log new stream details with orientation check
+      const videoTracks = newStream.getVideoTracks();
+      const audioTracks = newStream.getAudioTracks();
+      
+      if (videoTracks.length > 0) {
+        const settings = videoTracks[0].getSettings();
+        const resolution = `${settings.width}x${settings.height}`;
+        const isLandscape = (settings.width || 0) > (settings.height || 0);
+        
+        addLog(`📹 New stream: ${resolution}@${settings.frameRate}fps`);
+        addLog(`🔄 Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
+        
+        if (!isLandscape) {
+          addLog(`⚠️ Expected landscape, got portrait - browser may have auto-rotated`);
+        }
+      }
+      
+      addLog(`🎤 Audio tracks: ${audioTracks.length}`);
 
       const source = createMediaStreamSource(newStream, {
         transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,

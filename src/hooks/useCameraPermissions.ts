@@ -1,4 +1,4 @@
-// src/hooks/useCameraPermissions.ts - 4K camera support
+// src/hooks/useCameraPermissions.ts - Landscape constraints for Brio hardware
 import { useState, useCallback } from 'react';
 
 export type PermissionState = 'checking' | 'granted' | 'denied' | 'prompt';
@@ -108,14 +108,15 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
     includeAudio: boolean = true
   ): Promise<MediaStream | null> => {
     try {
-      addLog('📸 Requesting 4K camera stream with audio...');
+      addLog('📸 Requesting LANDSCAPE camera stream (Brio native resolution)...');
       
-      // 4K constraints with fallback
+      // LANDSCAPE constraints for Brio hardware (2560x1440 native)
       const constraints: MediaStreamConstraints = {
         video: { 
           facingMode,
-          width: { ideal: 3840, min: 1280, max: 3840 },
-          height: { ideal: 2160, min: 720, max: 2160 },
+          // Request LANDSCAPE to match Brio sensor orientation
+          width: { ideal: 2560, min: 1280, max: 3840 },
+          height: { ideal: 1440, min: 720, max: 2160 },
           frameRate: { ideal: 30, min: 15, max: 60 }
         },
         audio: includeAudio ? {
@@ -128,6 +129,7 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       };
 
       addLog(`🎤 Audio requested: ${includeAudio ? 'YES with high-quality constraints' : 'NO'}`);
+      addLog(`🏞️ LANDSCAPE constraints: ${(constraints.video as any).width.ideal}x${(constraints.video as any).height.ideal} (Brio native)`);
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
@@ -141,14 +143,22 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
         addLog('⚠️ WARNING: Audio requested but no audio tracks received!');
       }
       
-      // Log detailed track info
+      // Log detailed track info with landscape focus
       videoTracks.forEach((track, index) => {
         const settings = track.getSettings();
         const resolution = `${settings.width || 'unknown'}x${settings.height || 'unknown'}`;
-        const is4K = (settings.width || 0) >= 3840;
+        const isBrioOptimal = (settings.width || 0) >= 2560;
+        const isLandscape = (settings.width || 0) > (settings.height || 0);
+        
         addLog(`📹 Video track ${index}: ${track.label || 'Camera'}`);
-        addLog(`   - Resolution: ${resolution}@${settings.frameRate}fps ${is4K ? '(4K)' : '(HD)'}`);
+        addLog(`   - Resolution: ${resolution}@${settings.frameRate}fps`);
+        addLog(`   - Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
+        addLog(`   - Quality: ${isBrioOptimal ? 'Brio Optimal ✅' : 'Standard'}`);
         addLog(`   - Facing: ${settings.facingMode}`);
+        
+        if (!isLandscape) {
+          addLog(`⚠️ Got portrait ${resolution} instead of landscape - browser may have rotated`);
+        }
       });
       
       audioTracks.forEach((track, index) => {
@@ -163,7 +173,7 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       return stream;
 
     } catch (streamError: any) {
-      addLog(`❌ 4K camera stream failed: ${streamError.name} - ${streamError.message}`);
+      addLog(`❌ Landscape camera stream failed: ${streamError.name} - ${streamError.message}`);
       
       if (streamError.name === 'NotAllowedError') {
         setPermissionState('denied');
@@ -185,13 +195,14 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
           solution: 'Please try using Chrome, Firefox, Safari, or Edge'
         });
       } else if (streamError.name === 'OverconstrainedError') {
-        addLog('⚠️ 4K constraints too strict, trying HD fallback...');
+        addLog('⚠️ Brio constraints too strict, trying HD landscape fallback...');
         
-        // HD fallback
+        // HD landscape fallback
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode,
+              // HD landscape fallback
               width: { ideal: 1920, min: 640 },
               height: { ideal: 1080, min: 480 }
             },
@@ -202,13 +213,13 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
           const fallbackSettings = fallbackVideo?.getSettings();
           const fallbackRes = `${fallbackSettings?.width}x${fallbackSettings?.height}`;
           
-          addLog(`✅ HD fallback successful: ${fallbackRes}`);
+          addLog(`✅ HD landscape fallback successful: ${fallbackRes}`);
           setPermissionState('granted');
           setErrorInfo(null);
           return fallbackStream;
           
         } catch (fallbackError) {
-          addLog(`❌ HD fallback also failed: ${fallbackError}`);
+          addLog(`❌ HD landscape fallback also failed: ${fallbackError}`);
           setErrorInfo({
             type: 'device',
             message: 'Camera constraints not supported',
@@ -229,13 +240,14 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
 
   const requestPermission = useCallback(async (): Promise<MediaStream | null> => {
     try {
-      addLog('🔒 Manually requesting 4K camera + microphone permission...');
+      addLog('🔒 Manually requesting LANDSCAPE camera + microphone permission...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
           facingMode: 'user',
-          width: { ideal: 3840, min: 640 },
-          height: { ideal: 2160, min: 480 }
+          // Request landscape for permission check
+          width: { ideal: 2560, min: 640 },
+          height: { ideal: 1440, min: 480 }
         },
         audio: true
       });
@@ -244,8 +256,9 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       const videoTracks = stream.getVideoTracks();
       const videoSettings = videoTracks[0]?.getSettings();
       const resolution = `${videoSettings?.width}x${videoSettings?.height}`;
+      const isLandscape = (videoSettings?.width || 0) > (videoSettings?.height || 0);
       
-      addLog(`✅ Permission granted: ${resolution}, ${audioTracks.length} audio tracks`);
+      addLog(`✅ Permission granted: ${resolution} ${isLandscape ? '(LANDSCAPE)' : '(PORTRAIT)'}, ${audioTracks.length} audio tracks`);
       
       // Stop immediately after permission check
       stream.getTracks().forEach(track => track.stop());
