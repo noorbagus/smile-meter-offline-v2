@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Fixed camera texture quality
+// src/hooks/useCameraKit.ts - Always mirror, no facingMode
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { createAdaptiveCameraKitConfig, validateConfig } from '../config/cameraKit';
@@ -46,7 +46,7 @@ preloadCameraKit().catch(console.error);
 
 export const useCameraKit = (addLog: (message: string) => void) => {
   const [cameraState, setCameraState] = useState<CameraState>('initializing');
-  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
+  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user'); // For UI only
   
   const sessionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -96,7 +96,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           displayWidth = containerRect.height * canvasAspect;
         }
         
-        // HIGH QUALITY CSS for smooth camera texture
+        // HIGH QUALITY CSS with mirroring
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
@@ -242,21 +242,22 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Updating existing session...');
         
+        // ALWAYS MIRROR - no facingMode logic
         const source = createMediaStreamSource(stream, {
-          transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
-          cameraType: currentFacingMode
+          transform: Transform2D.MirrorX, // Always mirror
+          cameraType: 'user' // Fixed value for consistency
         });
         
         await withTimeout(sessionRef.current.setSource(source), 3000);
         
-        // Match AR processing to camera resolution for better quality
+        // Match AR processing to camera resolution
         const videoTrack = stream.getVideoTracks()[0];
         const settings = videoTrack.getSettings();
         await source.setRenderSize(
           settings.width || adaptiveConfig.canvas.width,
           settings.height || adaptiveConfig.canvas.height
         );
-        addLog(`✅ High-quality render: ${settings.width}x${settings.height}`);
+        addLog(`✅ Mirrored render: ${settings.width}x${settings.height}`);
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -269,11 +270,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           }, 100);
         }
         
-        addLog('✅ Stream updated');
+        addLog('✅ Stream updated with mirror');
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit with high-quality rendering...');
+      addLog('🎭 Initializing Camera Kit with mirrored output...');
       addLog(`📐 Adaptive canvas: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
       setCameraState('initializing');
       containerRef.current = containerReference;
@@ -305,22 +306,23 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
+      // ALWAYS MIRROR - no facingMode logic
       const source = createMediaStreamSource(stream, {
-        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
-        cameraType: currentFacingMode
+        transform: Transform2D.MirrorX, // Always mirror
+        cameraType: 'user' // Fixed value for consistency
       });
       
       await withTimeout(session.setSource(source), 3000);
-      addLog('✅ Camera source configured');
+      addLog('✅ Mirrored camera source configured');
 
-      // High-quality AR rendering - match camera resolution
+      // High-quality AR rendering
       const videoTrack = stream.getVideoTracks()[0];
       const settings = videoTrack.getSettings();
       await source.setRenderSize(
         settings.width || adaptiveConfig.canvas.width,
         settings.height || adaptiveConfig.canvas.height
       );
-      addLog(`✅ High-quality AR render: ${settings.width}x${settings.height}`);
+      addLog(`✅ Mirrored AR render: ${settings.width}x${settings.height}`);
 
       if (!lensRepositoryRef.current) {
         try {
@@ -350,13 +352,13 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
-          addLog('🎥 Attaching high-quality output...');
+          addLog('🎥 Attaching mirrored output...');
           attachCameraOutput(session.output.live, containerReference);
         }
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 High-quality Camera Kit complete');
+      addLog('🎉 Mirrored Camera Kit complete');
       return true;
 
     } catch (error: any) {
@@ -365,7 +367,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       setCameraState('error');
       return false;
     }
-  }, [currentFacingMode, addLog, attachCameraOutput, cameraState]);
+  }, [addLog, attachCameraOutput, cameraState]);
 
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
     if (!sessionRef.current || !isInitializedRef.current) {
@@ -374,8 +376,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
 
     try {
+      // Toggle UI state only (doesn't affect actual camera)
       const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      addLog(`🔄 Switching to ${newFacingMode} camera...`);
+      addLog(`🔄 Refreshing camera stream (UI: ${newFacingMode})...`);
 
       if (sessionRef.current.output?.live) {
         sessionRef.current.pause();
@@ -392,11 +395,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // LANDSCAPE constraints for camera switch
+      // Request new stream (no facingMode - always highest)
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
-            facingMode: newFacingMode,
+            // No facingMode - always get highest resolution
             width: { ideal: 2560, min: 1280, max: 3840 },
             height: { ideal: 1440, min: 720, max: 2160 },
             frameRate: { ideal: 30, min: 15, max: 60 }
@@ -412,7 +415,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         5000
       );
 
-      addLog(`✅ New ${newFacingMode} stream obtained`);
+      addLog(`✅ Refreshed stream obtained`);
       streamRef.current = newStream;
 
       const videoTracks = newStream.getVideoTracks();
@@ -423,25 +426,26 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         const resolution = `${settings.width}x${settings.height}`;
         const isLandscape = (settings.width || 0) > (settings.height || 0);
         
-        addLog(`📹 New stream: ${resolution}@${settings.frameRate}fps`);
+        addLog(`📹 Refreshed stream: ${resolution}@${settings.frameRate}fps`);
         addLog(`🔄 Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
       }
       
       addLog(`🎤 Audio tracks: ${audioTracks.length}`);
 
+      // ALWAYS MIRROR - no facingMode logic
       const source = createMediaStreamSource(newStream, {
-        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
-        cameraType: newFacingMode
+        transform: Transform2D.MirrorX, // Always mirror
+        cameraType: 'user' // Fixed value
       });
       
       await withTimeout(sessionRef.current.setSource(source), 3000);
-      addLog('✅ Source set');
+      addLog('✅ Mirrored source set');
 
-      // High-quality rendering for new camera
+      // High-quality rendering
       const videoSettings = videoTracks[0]?.getSettings();
       if (videoSettings) {
         await source.setRenderSize(videoSettings.width || 1280, videoSettings.height || 720);
-        addLog(`✅ High-quality render: ${videoSettings.width}x${videoSettings.height}`);
+        addLog(`✅ Mirrored render: ${videoSettings.width}x${videoSettings.height}`);
       }
 
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -451,12 +455,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         addLog('▶️ Session resumed');
       }
 
-      setCurrentFacingMode(newFacingMode);
-      addLog(`🎉 Camera switched to ${newFacingMode}`);
+      setCurrentFacingMode(newFacingMode); // UI state only
+      addLog(`🎉 Camera refreshed (UI: ${newFacingMode})`);
       return newStream;
       
     } catch (error: any) {
-      addLog(`❌ Camera switch failed: ${error.message}`);
+      addLog(`❌ Camera refresh failed: ${error.message}`);
       
       try {
         if (sessionRef.current.output?.live) {
@@ -510,9 +514,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
   return {
     cameraState,
-    currentFacingMode,
+    currentFacingMode, // UI state only
     initializeCameraKit,
-    switchCamera,
+    switchCamera, // Now "refresh camera"
     reloadLens,
     pauseSession,
     resumeSession,

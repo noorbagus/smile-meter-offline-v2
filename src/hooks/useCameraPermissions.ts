@@ -1,4 +1,4 @@
-// src/hooks/useCameraPermissions.ts - LANDSCAPE constraints for Brio hardware
+// src/hooks/useCameraPermissions.ts - No facingMode, always highest resolution
 import { useState, useCallback } from 'react';
 
 export type PermissionState = 'checking' | 'granted' | 'denied' | 'prompt';
@@ -104,17 +104,16 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
   }, [addLog, checkHTTPS, checkMediaDeviceSupport, checkPermissionAPI]);
 
   const requestCameraStream = useCallback(async (
-    facingMode: 'user' | 'environment' = 'user',
+    _facingMode?: 'user' | 'environment', // Ignored, kept for compatibility
     includeAudio: boolean = true
   ): Promise<MediaStream | null> => {
     try {
-      addLog('📸 Requesting LANDSCAPE camera stream (Brio native resolution)...');
+      addLog('📸 Requesting HIGHEST RESOLUTION camera stream (no facing preference)...');
       
-      // LANDSCAPE constraints for Brio hardware (2560x1440 native)
+      // NO FACING MODE - always get highest available resolution
       const constraints: MediaStreamConstraints = {
         video: { 
-          facingMode,
-          // Request LANDSCAPE to match Brio sensor orientation
+          // facingMode removed - let browser pick best camera
           width: { ideal: 2560, min: 1280, max: 3840 },
           height: { ideal: 1440, min: 720, max: 2160 },
           frameRate: { ideal: 30, min: 15, max: 60 }
@@ -129,7 +128,7 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       };
 
       addLog(`🎤 Audio requested: ${includeAudio ? 'YES with high-quality constraints' : 'NO'}`);
-      addLog(`🏞️ LANDSCAPE constraints: ${(constraints.video as any).width.ideal}x${(constraints.video as any).height.ideal} (Brio native)`);
+      addLog(`📐 HIGHEST resolution constraints: ${(constraints.video as any).width.ideal}x${(constraints.video as any).height.ideal} (no facing preference)`);
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
@@ -143,21 +142,21 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
         addLog('⚠️ WARNING: Audio requested but no audio tracks received!');
       }
       
-      // Log detailed track info with landscape focus
+      // Log detailed track info
       videoTracks.forEach((track, index) => {
         const settings = track.getSettings();
         const resolution = `${settings.width || 'unknown'}x${settings.height || 'unknown'}`;
-        const isBrioOptimal = (settings.width || 0) >= 2560;
+        const isHighRes = (settings.width || 0) >= 2560;
         const isLandscape = (settings.width || 0) > (settings.height || 0);
         
         addLog(`📹 Video track ${index}: ${track.label || 'Camera'}`);
         addLog(`   - Resolution: ${resolution}@${settings.frameRate}fps`);
         addLog(`   - Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
-        addLog(`   - Quality: ${isBrioOptimal ? 'Brio Optimal ✅' : 'Standard'}`);
-        addLog(`   - Facing: ${settings.facingMode}`);
+        addLog(`   - Quality: ${isHighRes ? 'HIGH-RES ✅' : 'STANDARD'}`);
+        addLog(`   - Device: ${track.label || 'Unknown Camera'}`);
         
         if (!isLandscape) {
-          addLog(`⚠️ Got portrait ${resolution} instead of landscape - browser may have rotated`);
+          addLog(`⚠️ Got portrait ${resolution} - may be rotated by browser`);
         }
       });
       
@@ -173,7 +172,7 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       return stream;
 
     } catch (streamError: any) {
-      addLog(`❌ Landscape camera stream failed: ${streamError.name} - ${streamError.message}`);
+      addLog(`❌ Highest resolution camera stream failed: ${streamError.name} - ${streamError.message}`);
       
       if (streamError.name === 'NotAllowedError') {
         setPermissionState('denied');
@@ -195,14 +194,13 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
           solution: 'Please try using Chrome, Firefox, Safari, or Edge'
         });
       } else if (streamError.name === 'OverconstrainedError') {
-        addLog('⚠️ Brio constraints too strict, trying HD landscape fallback...');
+        addLog('⚠️ High resolution constraints too strict, trying HD fallback...');
         
-        // HD landscape fallback
+        // HD fallback
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
             video: { 
-              facingMode,
-              // HD landscape fallback
+              // Still no facingMode
               width: { ideal: 1920, min: 640 },
               height: { ideal: 1080, min: 480 }
             },
@@ -213,13 +211,13 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
           const fallbackSettings = fallbackVideo?.getSettings();
           const fallbackRes = `${fallbackSettings?.width}x${fallbackSettings?.height}`;
           
-          addLog(`✅ HD landscape fallback successful: ${fallbackRes}`);
+          addLog(`✅ HD fallback successful: ${fallbackRes}`);
           setPermissionState('granted');
           setErrorInfo(null);
           return fallbackStream;
           
         } catch (fallbackError) {
-          addLog(`❌ HD landscape fallback also failed: ${fallbackError}`);
+          addLog(`❌ HD fallback also failed: ${fallbackError}`);
           setErrorInfo({
             type: 'device',
             message: 'Camera constraints not supported',
@@ -240,12 +238,11 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
 
   const requestPermission = useCallback(async (): Promise<MediaStream | null> => {
     try {
-      addLog('🔒 Manually requesting LANDSCAPE camera + microphone permission...');
+      addLog('🔒 Manually requesting HIGHEST RESOLUTION camera + microphone permission...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
-          facingMode: 'user',
-          // Request landscape for permission check
+          // No facingMode for permission check
           width: { ideal: 2560, min: 640 },
           height: { ideal: 1440, min: 480 }
         },
