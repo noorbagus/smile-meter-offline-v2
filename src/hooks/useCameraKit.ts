@@ -95,9 +95,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         outputCanvasRef.current = canvas;
         
-        // Force 4K canvas resolution
-        canvas.width = FIXED_4K_CONFIG.canvas.width;
-        canvas.height = FIXED_4K_CONFIG.canvas.height;
+        // Don't resize - Camera Kit controls canvas dimensions
+        // Canvas is managed by Camera Kit after transferControlToOffscreen()
+        addLog(`📊 Canvas dimensions: ${canvas.width}x${canvas.height} (Camera Kit controlled)`);
         
         // Detect orientation
         const isPortrait = window.innerHeight > window.innerWidth;
