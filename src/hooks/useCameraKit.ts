@@ -1,26 +1,91 @@
-// src/hooks/useCameraKit.ts - Fixed 4K with proper scaling
+// src/hooks/useCameraKit.ts - Adaptive resolution detection + camera rotation
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { CAMERA_KIT_CONFIG, validateConfig } from '../config/cameraKit';
 import type { CameraState } from './useCameraPermissions';
 
-// Fixed 4K configuration
-const FIXED_4K_CONFIG = {
-  canvas: { width: 3840, height: 2160 },
-  render: { width: 1920, height: 1080 },
-  aspectRatio: 16 / 9
+// Resolution detection utilities
+const detectMaxCameraResolution = async (
+  facingMode: 'user' | 'environment' = 'user',
+  addLog: (msg: string) => void
+): Promise<{ width: number; height: number; fps: number }> => {
+  const presets = [
+    { width: 3840, height: 2160, name: '4K' },
+    { width: 2560, height: 1440, name: '1440p' },
+    { width: 1920, height: 1080, name: '1080p' },
+    { width: 1280, height: 720, name: '720p' }
+  ];
+  
+  for (const preset of presets) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode,
+          width: { ideal: preset.width },
+          height: { ideal: preset.height },
+          frameRate: { ideal: 30 }
+        }
+      });
+      
+      const track = stream.getVideoTracks()[0];
+      const settings = track.getSettings();
+      stream.getTracks().forEach(t => t.stop());
+      
+      const result = {
+        width: settings.width || preset.width,
+        height: settings.height || preset.height,
+        fps: settings.frameRate || 30
+      };
+      
+      addLog(`✅ Max camera: ${result.width}x${result.height}@${result.fps}fps (${preset.name})`);
+      return result;
+    } catch (error) {
+      addLog(`❌ ${preset.name} (${preset.width}x${preset.height}) not supported`);
+    }
+  }
+  
+  return { width: 1280, height: 720, fps: 30 };
 };
 
-// Singleton instance
+const detectMaxDisplayResolution = (addLog: (msg: string) => void) => {
+  const dpr = window.devicePixelRatio || 1;
+  const physical = {
+    width: window.screen.width * dpr,
+    height: window.screen.height * dpr
+  };
+  
+  const presets = [
+    { width: 3840, height: 2160, name: '4K' },
+    { width: 2560, height: 1440, name: '1440p' },
+    { width: 1920, height: 1080, name: '1080p' }
+  ];
+  
+  addLog(`📱 Physical screen: ${physical.width}x${physical.height} (DPR: ${dpr})`);
+  
+  for (const preset of presets) {
+    if (physical.width >= preset.width && physical.height >= preset.height) {
+      addLog(`✅ Max display: ${preset.width}x${preset.height} (${preset.name})`);
+      return preset;
+    }
+  }
+  
+  return { width: 1920, height: 1080, name: 'HD' };
+};
+
+const needsCameraRotation = (): boolean => {
+  return /brio|logitech/i.test(navigator.userAgent) || 
+         window.location.search.includes('rotate=true');
+};
+
+// Singleton Camera Kit instance
 let cameraKitInstance: any = null;
 let preloadPromise: Promise<any> | null = null;
 
-// Timeout wrapper
 const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error(`Operation timeout after ${ms}ms`)), ms)
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
     )
   ]);
 };
@@ -31,8 +96,6 @@ const preloadCameraKit = async () => {
   
   preloadPromise = (async () => {
     try {
-      console.log('🚀 Preloading Camera Kit...');
-      
       if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
         throw new Error('HTTPS_REQUIRED');
       }
@@ -42,10 +105,8 @@ const preloadCameraKit = async () => {
         apiToken: CAMERA_KIT_CONFIG.apiToken 
       });
       
-      console.log('✅ Camera Kit preloaded');
       return cameraKitInstance;
     } catch (error) {
-      console.error('❌ Failed to preload Camera Kit:', error);
       cameraKitInstance = null;
       preloadPromise = null;
       throw error;
@@ -69,8 +130,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const isAttachedRef = useRef<boolean>(false);
   const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
   const isInitializedRef = useRef<boolean>(false);
+  const resolutionConfigRef = useRef<any>(null);
 
-  // Fixed 4K Canvas attachment with portrait optimization
+  // Adaptive canvas attachment with auto-rotation
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
     containerReference: React.RefObject<HTMLDivElement>
@@ -95,19 +157,20 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         outputCanvasRef.current = canvas;
         
-        // Don't resize - Camera Kit controls canvas dimensions
-        // Canvas is managed by Camera Kit after transferControlToOffscreen()
-        addLog(`📊 Canvas dimensions: ${canvas.width}x${canvas.height} (Camera Kit controlled)`);
+        // Canvas managed by Camera Kit
+        addLog(`📊 Canvas: ${canvas.width}x${canvas.height} (Camera Kit controlled)`);
         
-        // Detect orientation
+        // Detect orientation and rotation
         const isPortrait = window.innerHeight > window.innerWidth;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        const needsRotation = needsCameraRotation();
         const orientation = isPortrait ? 'portrait' : 'landscape';
         
-        addLog(`📱 Orientation: ${orientation} (${viewportWidth}x${viewportHeight})`);
+        addLog(`📱 Display: ${orientation} (${window.innerWidth}x${window.innerHeight})`);
+        addLog(`🔄 Camera rotation: ${needsRotation ? 'YES (90°)' : 'NO'}`);
         
-        // Portrait-optimized 4K scaling CSS
+        // CSS with optional rotation
+        const rotationTransform = needsRotation ? 'rotate(90deg)' : '';
+        
         canvas.style.cssText = `
           position: absolute;
           top: 0;
@@ -118,8 +181,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           object-position: center;
           background: transparent;
           image-rendering: crisp-edges;
-          image-rendering: -webkit-optimize-contrast;
-          transform: translateZ(0);
+          transform: translateZ(0) ${rotationTransform};
           will-change: transform;
           backface-visibility: hidden;
           max-width: 100vw;
@@ -128,7 +190,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         canvas.className = 'absolute inset-0 w-full h-full object-contain';
         
-        // Portrait-aware container styling
+        // Container styling
         const container = containerReference.current;
         container.style.cssText = `
           position: relative;
@@ -147,7 +209,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           isAttachedRef.current = true;
           
           const rect = container.getBoundingClientRect();
-          addLog(`✅ 4K Canvas attached (${orientation}): ${canvas.width}x${canvas.height} → ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+          addLog(`✅ Canvas attached (${orientation}${needsRotation ? ', rotated' : ''}): ${Math.round(rect.width)}x${Math.round(rect.height)}`);
         } catch (e) {
           addLog(`❌ Canvas attachment failed: ${e}`);
         }
@@ -159,21 +221,21 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
   const restoreCameraFeed = useCallback(() => {
     if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
-      addLog('🔄 Restoring 4K camera feed...');
+      addLog('🔄 Restoring camera feed...');
       
       const isCanvasAttached = containerRef.current.current.contains(outputCanvasRef.current);
       
       if (!isCanvasAttached) {
-        addLog('📱 Re-attaching 4K canvas after app return');
+        addLog('📱 Re-attaching canvas');
         attachCameraOutput(outputCanvasRef.current, containerRef.current);
       }
       
       if (sessionRef.current.output?.live) {
         try {
           sessionRef.current.play('live');
-          addLog('▶️ Camera Kit session resumed');
+          addLog('▶️ Session resumed');
         } catch (error) {
-          addLog(`⚠️ Session resume error: ${error}`);
+          addLog(`⚠️ Resume error: ${error}`);
         }
       }
     }
@@ -181,21 +243,21 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
   const reloadLens = useCallback(async (): Promise<boolean> => {
     if (!sessionRef.current || !isInitializedRef.current) {
-      addLog('❌ Cannot reload lens - session not ready');
+      addLog('❌ Cannot reload - session not ready');
       return false;
     }
 
     try {
-      addLog('🔄 Hard restarting AR lens...');
+      addLog('🔄 Restarting AR lens...');
       
       sessionRef.current.pause();
       await new Promise(resolve => setTimeout(resolve, 200));
       
       try {
         await withTimeout(sessionRef.current.removeLens(), 2000);
-        addLog('🗑️ Current lens removed');
+        addLog('🗑️ Lens removed');
       } catch (removeError) {
-        addLog(`⚠️ Lens removal failed, continuing anyway: ${removeError}`);
+        addLog(`⚠️ Lens removal failed: ${removeError}`);
       }
       
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -213,7 +275,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         restoreCameraFeed();
       }, 300);
       
-      addLog('🎉 AR lens hard restarted successfully');
+      addLog('🎉 AR lens restarted');
       return true;
       
     } catch (error) {
@@ -232,12 +294,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        addLog('👁️ App became visible, checking 4K camera feed...');
+        addLog('👁️ App visible - checking camera...');
         setTimeout(() => {
           restoreCameraFeed();
         }, 100);
-      } else {
-        addLog('🙈 App backgrounded');
       }
     };
 
@@ -255,7 +315,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     try {
       // Re-initialization check
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
-        addLog('📱 Camera Kit already initialized, updating stream...');
+        addLog('📱 Updating existing session...');
         
         const source = createMediaStreamSource(stream, {
           transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
@@ -264,9 +324,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         await withTimeout(sessionRef.current.setSource(source), 3000);
         
-        // HD render size for AR processing (4K display)
-        await source.setRenderSize(FIXED_4K_CONFIG.render.width, FIXED_4K_CONFIG.render.height);
-        addLog(`✅ AR render size: ${FIXED_4K_CONFIG.render.width}x${FIXED_4K_CONFIG.render.height} (processing), display: 4K`);
+        // Use cached resolution config
+        const config = resolutionConfigRef.current;
+        if (config) {
+          await source.setRenderSize(config.display.width, config.display.height);
+          addLog(`✅ AR render: ${config.display.width}x${config.display.height}`);
+        }
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -283,28 +346,37 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit with fixed 4K...');
+      addLog('🎭 Initializing Camera Kit with adaptive resolution...');
       setCameraState('initializing');
       containerRef.current = containerReference;
+
+      // Detect maximum capabilities
+      const [maxCamera, maxDisplay] = await Promise.all([
+        detectMaxCameraResolution(currentFacingMode, addLog),
+        Promise.resolve(detectMaxDisplayResolution(addLog))
+      ]);
+
+      // Cache resolution config
+      resolutionConfigRef.current = { camera: maxCamera, display: maxDisplay };
 
       // Bootstrap Camera Kit
       let cameraKit = cameraKitInstance;
       if (!cameraKit) {
-        addLog('Camera Kit not preloaded, bootstrapping now...');
+        addLog('Bootstrapping Camera Kit...');
         try {
           cameraKit = await withTimeout(preloadCameraKit(), 10000);
         } catch (ckError: any) {
-          addLog(`❌ Camera Kit bootstrap failed: ${ckError.message}`);
+          addLog(`❌ Bootstrap failed: ${ckError.message}`);
           setCameraState('error');
           return false;
         }
       }
       
       if (!cameraKit) {
-        throw new Error('Failed to initialize Camera Kit instance');
+        throw new Error('Failed to initialize Camera Kit');
       }
 
-      addLog('🎬 Creating Camera Kit session...');
+      addLog('🎬 Creating session...');
       const session: any = await withTimeout(cameraKit.createSession(), 5000);
       sessionRef.current = session;
       streamRef.current = stream;
@@ -324,9 +396,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       await withTimeout(session.setSource(source), 3000);
       addLog('✅ Camera source configured');
 
-      // AR processing in HD, display upscaled to 4K
-      await source.setRenderSize(FIXED_4K_CONFIG.render.width, FIXED_4K_CONFIG.render.height);
-      addLog(`✅ AR render size: ${FIXED_4K_CONFIG.render.width}x${FIXED_4K_CONFIG.render.height} (processing), display: 4K`);
+      // Set render size based on detected display capability
+      await source.setRenderSize(maxDisplay.width, maxDisplay.height);
+      addLog(`✅ AR render: ${maxDisplay.width}x${maxDisplay.height} (${maxDisplay.name})`);
 
       // Load lens repository
       if (!lensRepositoryRef.current) {
@@ -336,7 +408,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
             5000
           );
           lensRepositoryRef.current = lensResult.lenses;
-          addLog('✅ Lens repository cached');
+          addLog('✅ Lens repository loaded');
         } catch (lensError) {
           addLog(`⚠️ Lens loading failed: ${lensError}`);
         }
@@ -348,7 +420,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         try {
           const targetLens = lenses.find((lens: any) => lens.id === CAMERA_KIT_CONFIG.lensId) || lenses[0];
           await withTimeout(session.applyLens(targetLens), 3000);
-          addLog(`✅ 4K Lens applied: ${targetLens.name}`);
+          addLog(`✅ Lens applied: ${targetLens.name}`);
         } catch (lensApplyError) {
           addLog(`⚠️ Lens application failed: ${lensApplyError}`);
         }
@@ -357,18 +429,16 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       // Start session
       session.play('live');
 
-      // Attach 4K output with extended delay
+      // Attach output
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
-          addLog('🎥 Attaching 4K Camera Kit output...');
+          addLog('🎥 Attaching Camera Kit output...');
           attachCameraOutput(session.output.live, containerReference);
-        } else {
-          addLog(`❌ Output attachment failed: live=${!!session.output.live}, container=${!!containerReference.current}, attached=${isAttachedRef.current}`);
         }
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Fixed 4K Camera Kit initialization complete');
+      addLog('🎉 Camera Kit initialization complete');
       return true;
 
     } catch (error: any) {
@@ -381,18 +451,18 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
     if (!sessionRef.current || !isInitializedRef.current) {
-      addLog('❌ Cannot switch camera - session not initialized');
+      addLog('❌ Cannot switch - session not initialized');
       return null;
     }
 
     try {
       const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      addLog(`🔄 Switching to ${newFacingMode} camera with 4K...`);
+      addLog(`🔄 Switching to ${newFacingMode} camera...`);
 
       // Pause session
       if (sessionRef.current.output?.live) {
         sessionRef.current.pause();
-        addLog('⏸️ Session paused for switch');
+        addLog('⏸️ Session paused');
       }
 
       // Stop current stream
@@ -406,15 +476,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Get new 4K stream
-      addLog(`📹 Requesting ${newFacingMode} camera for 4K...`);
+      // Get maximum resolution for new camera
+      const maxCamera = await detectMaxCameraResolution(newFacingMode, addLog);
       
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: newFacingMode,
-            width: { ideal: 3840, min: 1280 },
-            height: { ideal: 2160, min: 720 },
+            width: { ideal: maxCamera.width, min: 1280 },
+            height: { ideal: maxCamera.height, min: 720 },
             frameRate: { ideal: 30 }
           },
           audio: true
@@ -432,11 +502,14 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       });
       
       await withTimeout(sessionRef.current.setSource(source), 3000);
-      addLog('✅ Source set successfully');
+      addLog('✅ Source set');
 
-      // Apply HD render size for AR processing
-      await source.setRenderSize(FIXED_4K_CONFIG.render.width, FIXED_4K_CONFIG.render.height);
-      addLog(`✅ AR render size: ${FIXED_4K_CONFIG.render.width}x${FIXED_4K_CONFIG.render.height} (processing), display: 4K`);
+      // Apply render size
+      const config = resolutionConfigRef.current;
+      if (config) {
+        await source.setRenderSize(config.display.width, config.display.height);
+        addLog(`✅ AR render: ${config.display.width}x${config.display.height}`);
+      }
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
@@ -447,7 +520,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }
 
       setCurrentFacingMode(newFacingMode);
-      addLog(`🎉 Camera switched to ${newFacingMode} with 4K quality`);
+      addLog(`🎉 Camera switched to ${newFacingMode}`);
       return newStream;
       
     } catch (error: any) {
@@ -457,7 +530,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         if (sessionRef.current.output?.live) {
           sessionRef.current.play('live');
         }
-        addLog('🔄 Restored previous camera state');
+        addLog('🔄 Restored previous state');
       } catch (recoveryError) {
         addLog(`❌ Recovery failed: ${recoveryError}`);
         setCameraState('error');
@@ -470,25 +543,25 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const pauseSession = useCallback(() => {
     if (sessionRef.current) {
       sessionRef.current.pause();
-      addLog('⏸️ Camera Kit session paused');
+      addLog('⏸️ Session paused');
     }
   }, [addLog]);
 
   const resumeSession = useCallback(() => {
     if (sessionRef.current) {
       sessionRef.current.play('live');
-      addLog('▶️ Camera Kit session resumed');
+      addLog('▶️ Session resumed');
     }
   }, [addLog]);
 
   const cleanup = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
-      addLog('🔄 Camera stream stopped');
+      addLog('🔄 Stream stopped');
     }
     if (sessionRef.current) {
       sessionRef.current.pause();
-      addLog('⏸️ Camera Kit session paused');
+      addLog('⏸️ Session paused');
     }
     isAttachedRef.current = false;
     containerRef.current = null;
