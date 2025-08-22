@@ -1,4 +1,4 @@
-// src/hooks/useCameraPermissions.ts - Fixed with proper audio support
+// src/hooks/useCameraPermissions.ts - 4K camera support
 import { useState, useCallback } from 'react';
 
 export type PermissionState = 'checking' | 'granted' | 'denied' | 'prompt';
@@ -108,15 +108,16 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
     includeAudio: boolean = true
   ): Promise<MediaStream | null> => {
     try {
-      addLog('📸 Requesting camera stream with audio...');
+      addLog('📸 Requesting 4K camera stream with audio...');
       
+      // 4K constraints with fallback
       const constraints: MediaStreamConstraints = {
         video: { 
           facingMode,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 }
+          width: { ideal: 3840, min: 1280, max: 3840 },
+          height: { ideal: 2160, min: 720, max: 2160 },
+          frameRate: { ideal: 30, min: 15, max: 60 }
         },
-        // CRITICAL FIX: Proper audio constraints
         audio: includeAudio ? {
           echoCancellation: true,
           noiseSuppression: true,
@@ -126,11 +127,11 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
         } : false
       };
 
-      addLog(`🎤 Audio requested: ${includeAudio ? 'YES with constraints' : 'NO'}`);
+      addLog(`🎤 Audio requested: ${includeAudio ? 'YES with high-quality constraints' : 'NO'}`);
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      // Verify what we actually got
+      // Verify stream quality
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
       
@@ -140,7 +141,16 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
         addLog('⚠️ WARNING: Audio requested but no audio tracks received!');
       }
       
-      // Log audio track details
+      // Log detailed track info
+      videoTracks.forEach((track, index) => {
+        const settings = track.getSettings();
+        const resolution = `${settings.width || 'unknown'}x${settings.height || 'unknown'}`;
+        const is4K = (settings.width || 0) >= 3840;
+        addLog(`📹 Video track ${index}: ${track.label || 'Camera'}`);
+        addLog(`   - Resolution: ${resolution}@${settings.frameRate}fps ${is4K ? '(4K)' : '(HD)'}`);
+        addLog(`   - Facing: ${settings.facingMode}`);
+      });
+      
       audioTracks.forEach((track, index) => {
         const settings = track.getSettings();
         addLog(`🎤 Audio track ${index}: ${track.label || 'Microphone'}`);
@@ -148,27 +158,19 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
         addLog(`   - Sample rate: ${settings.sampleRate}Hz, Channels: ${settings.channelCount}`);
       });
       
-      // Log video track details
-      videoTracks.forEach((track, index) => {
-        const settings = track.getSettings();
-        addLog(`📹 Video track ${index}: ${track.label || 'Camera'}`);
-        addLog(`   - Resolution: ${settings.width}x${settings.height}@${settings.frameRate}fps`);
-        addLog(`   - Facing: ${settings.facingMode}`);
-      });
-      
       setPermissionState('granted');
       setErrorInfo(null);
       return stream;
 
     } catch (streamError: any) {
-      addLog(`❌ Camera stream failed: ${streamError.name} - ${streamError.message}`);
+      addLog(`❌ 4K camera stream failed: ${streamError.name} - ${streamError.message}`);
       
       if (streamError.name === 'NotAllowedError') {
         setPermissionState('denied');
         setErrorInfo({
           type: 'permission',
           message: 'Camera/microphone access denied by user',
-          solution: 'Please click "Allow" when prompted for camera and microphone access, or enable them in browser settings'
+          solution: 'Please click "Allow" when prompted for camera and microphone access'
         });
       } else if (streamError.name === 'NotFoundError') {
         setErrorInfo({
@@ -183,25 +185,30 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
           solution: 'Please try using Chrome, Firefox, Safari, or Edge'
         });
       } else if (streamError.name === 'OverconstrainedError') {
-        addLog('⚠️ Constraints too strict, trying fallback...');
+        addLog('⚠️ 4K constraints too strict, trying HD fallback...');
         
-        // Fallback: Try with simpler constraints
+        // HD fallback
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode },
+            video: { 
+              facingMode,
+              width: { ideal: 1920, min: 640 },
+              height: { ideal: 1080, min: 480 }
+            },
             audio: includeAudio
           });
           
-          const fallbackAudio = fallbackStream.getAudioTracks().length;
-          const fallbackVideo = fallbackStream.getVideoTracks().length;
+          const fallbackVideo = fallbackStream.getVideoTracks()[0];
+          const fallbackSettings = fallbackVideo?.getSettings();
+          const fallbackRes = `${fallbackSettings?.width}x${fallbackSettings?.height}`;
           
-          addLog(`✅ Fallback stream: ${fallbackVideo} video, ${fallbackAudio} audio tracks`);
+          addLog(`✅ HD fallback successful: ${fallbackRes}`);
           setPermissionState('granted');
           setErrorInfo(null);
           return fallbackStream;
           
         } catch (fallbackError) {
-          addLog(`❌ Fallback also failed: ${fallbackError}`);
+          addLog(`❌ HD fallback also failed: ${fallbackError}`);
           setErrorInfo({
             type: 'device',
             message: 'Camera constraints not supported',
@@ -222,19 +229,25 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
 
   const requestPermission = useCallback(async (): Promise<MediaStream | null> => {
     try {
-      addLog('🔒 Manually requesting camera + microphone permission...');
+      addLog('🔒 Manually requesting 4K camera + microphone permission...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: true // Always request audio for permission
+        video: { 
+          facingMode: 'user',
+          width: { ideal: 3840, min: 640 },
+          height: { ideal: 2160, min: 480 }
+        },
+        audio: true
       });
       
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
+      const videoSettings = videoTracks[0]?.getSettings();
+      const resolution = `${videoSettings?.width}x${videoSettings?.height}`;
       
-      addLog(`✅ Permission granted: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
+      addLog(`✅ Permission granted: ${resolution}, ${audioTracks.length} audio tracks`);
       
-      // Stop the stream immediately as we just wanted permission
+      // Stop immediately after permission check
       stream.getTracks().forEach(track => track.stop());
       
       setPermissionState('granted');

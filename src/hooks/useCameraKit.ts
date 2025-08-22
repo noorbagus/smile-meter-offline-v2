@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Complete with reloadLens function
+// src/hooks/useCameraKit.ts - 4K default for Android display
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { CAMERA_KIT_CONFIG, validateConfig } from '../config/cameraKit';
@@ -8,7 +8,7 @@ import type { CameraState } from './useCameraPermissions';
 let cameraKitInstance: any = null;
 let preloadPromise: Promise<any> | null = null;
 
-// Timeout wrapper to prevent hanging operations
+// Timeout wrapper
 const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([
     promise,
@@ -48,7 +48,7 @@ const preloadCameraKit = async () => {
   return preloadPromise;
 };
 
-// Start preloading immediately
+// Start preloading
 preloadCameraKit().catch(console.error);
 
 export const useCameraKit = (addLog: (message: string) => void) => {
@@ -63,6 +63,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
   const isInitializedRef = useRef<boolean>(false);
 
+  // 4K Canvas attachment (always 4K)
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
     containerReference: React.RefObject<HTMLDivElement>
@@ -76,7 +77,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       requestAnimationFrame(() => {
         if (!containerReference.current) return;
 
-        // Safe DOM cleanup
+        // Clear container
         while (containerReference.current.firstChild) {
           try {
             containerReference.current.removeChild(containerReference.current.firstChild);
@@ -86,6 +87,14 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         }
         
         outputCanvasRef.current = canvas;
+        const container = containerReference.current;
+        const rect = container.getBoundingClientRect();
+        
+        // Always set 4K canvas resolution
+        canvas.width = 3840;
+        canvas.height = 2160;
+        
+        // 4K optimized CSS
         canvas.style.cssText = `
           width: 100%;
           height: 100%;
@@ -93,13 +102,19 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           position: absolute;
           inset: 0;
           background: transparent;
+          image-rendering: crisp-edges;
+          image-rendering: -webkit-optimize-contrast;
+          transform: translateZ(0);
+          will-change: transform;
+          backface-visibility: hidden;
         `;
+        
         canvas.className = 'absolute inset-0 w-full h-full object-cover';
         
         try {
           containerReference.current.appendChild(canvas);
           isAttachedRef.current = true;
-          addLog('✅ Camera output attached successfully');
+          addLog(`✅ 4K Canvas attached: ${canvas.width}x${canvas.height} → ${rect.width}x${rect.height}`);
         } catch (e) {
           addLog(`❌ Canvas attachment failed: ${e}`);
         }
@@ -140,11 +155,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     try {
       addLog('🔄 Hard restarting AR lens...');
       
-      // Pause session
       sessionRef.current.pause();
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Remove current lens
       try {
         await withTimeout(sessionRef.current.removeLens(), 2000);
         addLog('🗑️ Current lens removed');
@@ -152,21 +165,17 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         addLog(`⚠️ Lens removal failed, continuing anyway: ${removeError}`);
       }
       
-      // Wait for removal
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Re-apply lens from scratch
       const lenses = lensRepositoryRef.current;
       if (lenses && lenses.length > 0) {
         const targetLens = lenses.find((lens: any) => lens.id === CAMERA_KIT_CONFIG.lensId) || lenses[0];
         await withTimeout(sessionRef.current.applyLens(targetLens), 3000);
-        addLog(`✅ Lens restarted from beginning: ${targetLens.name}`);
+        addLog(`✅ Lens restarted: ${targetLens.name}`);
       }
       
-      // Resume session
       sessionRef.current.play('live');
       
-      // Restore camera feed
       setTimeout(() => {
         restoreCameraFeed();
       }, 300);
@@ -177,7 +186,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     } catch (error) {
       addLog(`❌ Lens restart failed: ${error}`);
       
-      // Recovery
       try {
         sessionRef.current.play('live');
       } catch (recoveryError) {
@@ -212,16 +220,20 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     containerReference: React.RefObject<HTMLDivElement>
   ): Promise<boolean> => {
     try {
-      // Prevent re-initialization if already done
+      // Re-initialization check
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
-        addLog('📱 Camera Kit already initialized, updating stream only...');
+        addLog('📱 Camera Kit already initialized, updating stream...');
         
-        const source = createMediaStreamSource(stream);
+        const source = createMediaStreamSource(stream, {
+          transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+          cameraType: currentFacingMode
+        });
+        
         await withTimeout(sessionRef.current.setSource(source), 3000);
         
-        if (currentFacingMode === 'user') {
-          source.setTransform(Transform2D.MirrorX);
-        }
+        // Always apply HD render size for AR processing
+        await source.setRenderSize(1920, 1080);
+        addLog('✅ AR render size: 1920x1080 (processing), display: 4K');
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -234,15 +246,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           }, 100);
         }
         
-        addLog('✅ Stream updated without re-initialization');
+        addLog('✅ Stream updated');
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit...');
+      addLog('🎭 Initializing Camera Kit with 4K default...');
       setCameraState('initializing');
       containerRef.current = containerReference;
 
-      // Get or bootstrap Camera Kit
+      // Bootstrap Camera Kit
       let cameraKit = cameraKitInstance;
       if (!cameraKit) {
         addLog('Camera Kit not preloaded, bootstrapping now...');
@@ -270,14 +282,20 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
-      const source = createMediaStreamSource(stream);
-      await withTimeout(session.setSource(source), 3000);
+      // Create source
+      const source = createMediaStreamSource(stream, {
+        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+        cameraType: currentFacingMode
+      });
       
-      if (currentFacingMode === 'user') {
-        source.setTransform(Transform2D.MirrorX);
-      }
+      await withTimeout(session.setSource(source), 3000);
       addLog('✅ Camera source configured');
 
+      // AR processing in 1080p, display upscaled to 4K
+      await source.setRenderSize(1920, 1080);
+      addLog('✅ AR render size: 1920x1080 (processing), display: 4K');
+
+      // Load lens repository
       if (!lensRepositoryRef.current) {
         try {
           const lensResult: any = await withTimeout(
@@ -291,19 +309,22 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         }
       }
 
+      // Apply lens
       const lenses = lensRepositoryRef.current;
       if (lenses && lenses.length > 0) {
         try {
           const targetLens = lenses.find((lens: any) => lens.id === CAMERA_KIT_CONFIG.lensId) || lenses[0];
           await withTimeout(session.applyLens(targetLens), 3000);
-          addLog(`✅ Lens applied: ${targetLens.name}`);
+          addLog(`✅ 4K Lens applied: ${targetLens.name}`);
         } catch (lensApplyError) {
           addLog(`⚠️ Lens application failed: ${lensApplyError}`);
         }
       }
 
+      // Start session
       session.play('live');
 
+      // Attach 4K output
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
           attachCameraOutput(session.output.live, containerReference);
@@ -311,7 +332,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }, 100);
 
       setCameraState('ready');
-      addLog('🎉 Camera Kit initialization complete');
+      addLog('🎉 4K Camera Kit initialization complete');
       return true;
 
     } catch (error: any) {
@@ -330,15 +351,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
     try {
       const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      addLog(`🔄 Switching to ${newFacingMode} camera with timeout protection...`);
+      addLog(`🔄 Switching to ${newFacingMode} camera with 4K...`);
 
-      // Step 1: Pause session
+      // Pause session
       if (sessionRef.current.output?.live) {
         sessionRef.current.pause();
         addLog('⏸️ Session paused for switch');
       }
 
-      // Step 2: Stop current stream
+      // Stop current stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => {
           track.stop();
@@ -347,17 +368,18 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         streamRef.current = null;
       }
 
-      // Step 3: Wait for cleanup
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Step 4: Get new stream with timeout
-      addLog(`📹 Requesting ${newFacingMode} camera...`);
+      // Get new high-res stream
+      addLog(`📹 Requesting ${newFacingMode} camera for 4K...`);
+      
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: newFacingMode,
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 }
+            width: { ideal: 3840, min: 1280 },
+            height: { ideal: 2160, min: 720 },
+            frameRate: { ideal: 30 }
           },
           audio: true
         }),
@@ -367,39 +389,34 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       addLog(`✅ New ${newFacingMode} stream obtained`);
       streamRef.current = newStream;
 
-      // Step 5: Set source with timeout
-      const source = createMediaStreamSource(newStream);
+      // Set source
+      const source = createMediaStreamSource(newStream, {
+        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+        cameraType: newFacingMode
+      });
+      
       await withTimeout(sessionRef.current.setSource(source), 3000);
       addLog('✅ Source set successfully');
 
-      // Step 6: Apply transform if needed
-      if (newFacingMode === 'user') {
-        try {
-          source.setTransform(Transform2D.MirrorX);
-          addLog('🪞 Mirror transform applied');
-        } catch (transformError) {
-          addLog(`⚠️ Transform failed: ${transformError}`);
-        }
-      }
+      // Apply HD render size for AR processing
+      await source.setRenderSize(1920, 1080);
+      addLog('✅ AR render size: 1920x1080 (processing), display: 4K');
 
-      // Step 7: Wait before resuming
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // Step 8: Resume session
+      // Resume session
       if (sessionRef.current.output?.live) {
         sessionRef.current.play('live');
         addLog('▶️ Session resumed');
       }
 
-      // Step 9: Update state
       setCurrentFacingMode(newFacingMode);
-      addLog(`🎉 Camera switched to ${newFacingMode} successfully`);
+      addLog(`🎉 Camera switched to ${newFacingMode} with 4K quality`);
       return newStream;
       
     } catch (error: any) {
       addLog(`❌ Camera switch failed: ${error.message}`);
       
-      // Recovery: Try to restore previous state
       try {
         if (sessionRef.current.output?.live) {
           sessionRef.current.play('live');

@@ -1,20 +1,22 @@
+// src/config/cameraKit.ts - 4K optimized configuration
 import type { CameraKitConfig } from '../types/camera';
 
 // Environment variables with fallback values
-const API_TOKEN = import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI';
+const API_TOKEN = import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGZ-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI';
 
-const LENS_ID = import.meta.env.VITE_CAMERA_KIT_LENS_ID || '18afcdf0-939d-4fa6-89d7-9728243de56c';
+const LENS_ID = import.meta.env.VITE_CAMERA_KIT_LENS_ID || '04441cd2-8e9d-420b-b293-90b5df8f577f';
 
-const LENS_GROUP_ID = import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || '9748b404-fe76-4802-9a16-ca6bb1fe6295';
+const LENS_GROUP_ID = import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || 'cd5b1b49-4483-45ea-9772-cb241939e2ce';
 
 export const CAMERA_KIT_CONFIG: CameraKitConfig = {
   apiToken: API_TOKEN,
   lensId: LENS_ID,
   lensGroupId: LENS_GROUP_ID,
   
+  // 4K canvas for crisp display
   canvas: {
-    width: window.innerWidth,
-    height: window.innerHeight
+    width: 3840,
+    height: 2160
   },
   
   camera: {
@@ -22,22 +24,56 @@ export const CAMERA_KIT_CONFIG: CameraKitConfig = {
     audio: true
   },
   
+  // High bitrate for 4K recording
   recording: {
-    mimeType: 'video/webm;codecs=vp9',
-    videoBitsPerSecond: 2500000
+    mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    videoBitsPerSecond: 12000000 // 12Mbps for 4K
   }
+};
+
+// 4K display configuration
+export const DISPLAY_CONFIG = {
+  canvas: {
+    width: 3840,
+    height: 2160,
+    pixelRatio: 1, // Avoid double scaling
+  },
+  rendering: {
+    antialias: true,
+    powerPreference: 'high-performance' as const,
+    preserveDrawingBuffer: false,
+    premultipliedAlpha: false
+  },
+  css: {
+    imageRendering: 'crisp-edges',
+    willChange: 'transform',
+    backfaceVisibility: 'hidden'
+  }
+};
+
+// AR processing configuration (separate from display)
+export const AR_PROCESSING_CONFIG = {
+  renderSize: {
+    width: 1920,  // HD for performance
+    height: 1080
+  },
+  frameRate: 30,
+  optimization: 'performance' as const
 };
 
 export const validateConfig = (): boolean => {
   const { apiToken, lensId, lensGroupId } = CAMERA_KIT_CONFIG;
   
-  // Log configuration for debugging (remove in production)
+  // Log configuration for debugging
   if (import.meta.env.MODE === 'development') {
-    console.log('🔧 Camera Kit Config:', {
+    console.log('🔧 4K Camera Kit Config:', {
       hasApiToken: !!apiToken,
       apiTokenLength: apiToken?.length,
       lensId: lensId,
       lensGroupId: lensGroupId,
+      canvasRes: `${CAMERA_KIT_CONFIG.canvas.width}x${CAMERA_KIT_CONFIG.canvas.height}`,
+      arRes: `${AR_PROCESSING_CONFIG.renderSize.width}x${AR_PROCESSING_CONFIG.renderSize.height}`,
+      videoBitrate: `${CAMERA_KIT_CONFIG.recording.videoBitsPerSecond / 1000000}Mbps`,
       environment: import.meta.env.MODE
     });
   }
@@ -71,6 +107,55 @@ export const getCurrentConfig = () => {
     hasEnvToken: !!import.meta.env.VITE_CAMERA_KIT_API_TOKEN,
     hasEnvLensId: !!import.meta.env.VITE_CAMERA_KIT_LENS_ID,
     hasEnvGroupId: !!import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID,
-    config: CAMERA_KIT_CONFIG
+    config: CAMERA_KIT_CONFIG,
+    display: DISPLAY_CONFIG,
+    arProcessing: AR_PROCESSING_CONFIG
+  };
+};
+
+// Utility to get optimal camera constraints
+export const get4KCameraConstraints = (
+  facingMode: 'user' | 'environment' = 'user'
+): MediaStreamConstraints => {
+  return {
+    video: {
+      facingMode,
+      width: { ideal: 3840, min: 1280, max: 3840 },
+      height: { ideal: 2160, min: 720, max: 2160 },
+      frameRate: { ideal: 30, min: 15, max: 60 }
+    },
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      sampleRate: { ideal: 48000 },
+      channelCount: { ideal: 2 }
+    }
+  };
+};
+
+// Recording format detection
+export const getOptimalRecordingFormat = () => {
+  const formats = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 + AAC
+    'video/mp4;codecs=h264,aac',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm'
+  ];
+
+  for (const mimeType of formats) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) {
+      return {
+        mimeType,
+        videoBitsPerSecond: 12000000, // 12Mbps for 4K
+        audioBitsPerSecond: 256000
+      };
+    }
+  }
+
+  return {
+    videoBitsPerSecond: 12000000,
+    audioBitsPerSecond: 256000
   };
 };
