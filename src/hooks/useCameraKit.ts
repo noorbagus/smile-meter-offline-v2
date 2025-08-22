@@ -90,9 +90,14 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         const container = containerReference.current;
         const rect = container.getBoundingClientRect();
         
-        // Always set 4K canvas resolution
-        canvas.width = 3840;
-        canvas.height = 2160;
+        // Set 4K canvas resolution (only if not already controlled by Camera Kit)
+        try {
+          canvas.width = 3840;
+          canvas.height = 2160;
+          addLog('✅ 4K Canvas dimensions set manually');
+        } catch (error) {
+          addLog('⚠️ Canvas controlled by Camera Kit, using default size');
+        }
         
         // 4K optimized CSS
         canvas.style.cssText = `
@@ -324,12 +329,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       // Start session
       session.play('live');
 
-      // Attach 4K output
+      // Attach 4K output with extended delay
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
+          addLog('🎥 Attaching Camera Kit output...');
           attachCameraOutput(session.output.live, containerReference);
+        } else {
+          addLog(`❌ Output attachment failed: live=${!!session.output.live}, container=${!!containerReference.current}, attached=${isAttachedRef.current}`);
         }
-      }, 100);
+      }, 500);
 
       setCameraState('ready');
       addLog('🎉 4K Camera Kit initialization complete');
