@@ -1,4 +1,4 @@
-// src/config/cameraKit.ts - Adaptive resolution fix
+// src/config/cameraKit.ts - Landscape adaptive configuration
 import type { CameraKitConfig } from '../types/camera';
 
 const API_TOKEN = import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI';
@@ -7,10 +7,9 @@ const LENS_ID = import.meta.env.VITE_CAMERA_KIT_LENS_ID || '04441cd2-8e9d-420b-b
 const LENS_GROUP_ID = import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || 'cd5b1b49-4483-45ea-9772-cb241939e2ce';
 
 /**
- * Detect optimal canvas resolution based on container and device capability
+ * Get optimal canvas size for landscape orientation
  */
 export const getOptimalCanvasSize = (containerRef?: React.RefObject<HTMLDivElement>) => {
-  // Get container dimensions if available
   let containerWidth = window.innerWidth;
   let containerHeight = window.innerHeight;
   
@@ -20,33 +19,34 @@ export const getOptimalCanvasSize = (containerRef?: React.RefObject<HTMLDivEleme
     containerHeight = rect.height;
   }
   
-  // Apply device pixel ratio for crisp rendering
-  const dpr = window.devicePixelRatio || 1;
-  const physicalWidth = Math.round(containerWidth * dpr);
-  const physicalHeight = Math.round(containerHeight * dpr);
+  // For landscape camera on portrait screen, use landscape canvas
+  const isPortraitViewport = containerHeight > containerWidth;
   
-  // Cap at reasonable max for performance
-  const maxWidth = 1920;
-  const maxHeight = 1920;
-  
-  const optimalWidth = Math.min(physicalWidth, maxWidth);
-  const optimalHeight = Math.min(physicalHeight, maxHeight);
-  
-  console.log('🎯 Optimal canvas:', {
-    container: `${containerWidth}x${containerHeight}`,
-    dpr,
-    physical: `${physicalWidth}x${physicalHeight}`,
-    optimal: `${optimalWidth}x${optimalHeight}`
-  });
-  
-  return {
-    width: optimalWidth,
-    height: optimalHeight
-  };
+  if (isPortraitViewport) {
+    // Portrait viewport: use landscape canvas (will be rotated)
+    const dpr = window.devicePixelRatio || 1;
+    const maxWidth = Math.min(2560, Math.round(containerHeight * dpr));
+    const maxHeight = Math.min(1440, Math.round(containerWidth * dpr));
+    
+    return {
+      width: maxWidth,
+      height: maxHeight
+    };
+  } else {
+    // Landscape viewport: direct mapping
+    const dpr = window.devicePixelRatio || 1;
+    const maxWidth = Math.min(2560, Math.round(containerWidth * dpr));
+    const maxHeight = Math.min(1440, Math.round(containerHeight * dpr));
+    
+    return {
+      width: maxWidth,
+      height: maxHeight
+    };
+  }
 };
 
 /**
- * Create adaptive Camera Kit config based on container
+ * Create adaptive Camera Kit config for landscape orientation
  */
 export const createAdaptiveCameraKitConfig = (containerRef?: React.RefObject<HTMLDivElement>): CameraKitConfig => {
   const canvasSize = getOptimalCanvasSize(containerRef);
@@ -56,7 +56,7 @@ export const createAdaptiveCameraKitConfig = (containerRef?: React.RefObject<HTM
     lensId: LENS_ID,
     lensGroupId: LENS_GROUP_ID,
     
-    // ADAPTIVE canvas size - matches container
+    // Landscape canvas size
     canvas: {
       width: canvasSize.width,
       height: canvasSize.height
@@ -67,24 +67,24 @@ export const createAdaptiveCameraKitConfig = (containerRef?: React.RefObject<HTM
       audio: true
     },
     
-    // Adaptive bitrate based on resolution
+    // Adaptive bitrate for landscape
     recording: {
       mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      videoBitsPerSecond: Math.min(15000000, canvasSize.width * canvasSize.height * 0.1) // Scale with resolution
+      videoBitsPerSecond: Math.min(15000000, canvasSize.width * canvasSize.height * 0.1)
     }
   };
 };
 
-// Static fallback config (for backward compatibility)
+// Static landscape config
 export const CAMERA_KIT_CONFIG: CameraKitConfig = {
   apiToken: API_TOKEN,
   lensId: LENS_ID,
   lensGroupId: LENS_GROUP_ID,
   
-  // Default to screen size
+  // Default landscape size (Brio optimal)
   canvas: {
-    width: Math.round(window.innerWidth * (window.devicePixelRatio || 1)),
-    height: Math.round(window.innerHeight * (window.devicePixelRatio || 1))
+    width: 2560,
+    height: 1440
   },
   
   camera: {
@@ -94,11 +94,11 @@ export const CAMERA_KIT_CONFIG: CameraKitConfig = {
   
   recording: {
     mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-    videoBitsPerSecond: 8000000 // Conservative default
+    videoBitsPerSecond: 8000000
   }
 };
 
-// Display config (adaptive)
+// Landscape display config
 export const getAdaptiveDisplayConfig = (canvasWidth: number, canvasHeight: number) => ({
   canvas: {
     width: canvasWidth,
@@ -119,11 +119,11 @@ export const getAdaptiveDisplayConfig = (canvasWidth: number, canvasHeight: numb
   }
 });
 
-// AR processing config (performance-optimized)
+// AR processing config (landscape)
 export const AR_PROCESSING_CONFIG = {
   renderSize: {
-    width: 1080,
-    height: 1920
+    width: 1920,
+    height: 1080
   },
   frameRate: 30,
   optimization: 'performance' as const
@@ -133,7 +133,7 @@ export const validateConfig = (): boolean => {
   const { apiToken, lensId, lensGroupId } = CAMERA_KIT_CONFIG;
   
   if (import.meta.env.MODE === 'development') {
-    console.log('🔧 Adaptive Camera Kit Config:', {
+    console.log('🔧 Landscape Camera Kit Config:', {
       hasApiToken: !!apiToken,
       lensId,
       lensGroupId,
@@ -157,15 +157,15 @@ export const validateConfig = (): boolean => {
   return true;
 };
 
-// Helper untuk 4K camera constraints
-export const get4KCameraConstraints = (
+// Landscape camera constraints
+export const getLandscapeCameraConstraints = (
   facingMode: 'user' | 'environment' = 'user'
 ): MediaStreamConstraints => {
   return {
     video: {
       facingMode,
-      width: { ideal: 2560, min: 720, max: 3840 },
-      height: { ideal: 1440, min: 480, max: 2160 },
+      width: { ideal: 2560, min: 1280, max: 3840 },
+      height: { ideal: 1440, min: 720, max: 2160 },
       frameRate: { ideal: 30, min: 15, max: 60 }
     },
     audio: {
@@ -178,7 +178,7 @@ export const get4KCameraConstraints = (
   };
 };
 
-// Recording format yang optimal
+// Optimal recording format for landscape
 export const getOptimalRecordingFormat = () => {
   const formats = [
     'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
