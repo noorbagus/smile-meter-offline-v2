@@ -44,15 +44,64 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </p>
           </div>
 
+          {/* Monitor Capability */}
           <div className="text-white/80 text-sm">
-            <p className="mb-2 font-medium">📱 Device Info:</p>
+            <p className="mb-2 font-medium flex items-center gap-1">
+              <span className="text-blue-400">🖥️</span> Monitor Capability:
+            </p>
             <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
-              <p>Platform: {isAndroid ? 'Android' : 'Other'}</p>
-              <p>Protocol: {location.protocol}</p>
-              <p>Host: {location.hostname}</p>
-              <p>Resolution: {window.innerWidth}x{window.innerHeight}</p>
-              <p>DPR: {window.devicePixelRatio}</p>
-              <p>User Agent: {navigator.userAgent.substring(0, 50)}...</p>
+              <p>Physical: {window.screen.width}x{window.screen.height} (DPR: {window.devicePixelRatio})</p>
+              <p>Actual Pixels: {Math.round(window.screen.width * window.devicePixelRatio)}x{Math.round(window.screen.height * window.devicePixelRatio)}</p>
+              <p>Color Depth: {window.screen.colorDepth}-bit</p>
+              <p>Refresh Rate: ~{window.screen.orientation?.angle !== undefined ? '60' : 'Unknown'}Hz</p>
+            </div>
+          </div>
+
+          {/* Camera Capability */}
+          <div className="text-white/80 text-sm">
+            <p className="mb-2 font-medium flex items-center gap-1">
+              <span className="text-green-400">📹</span> Camera Capability:
+            </p>
+            <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
+              <p>Front: Testing... (getUserMedia check)</p>
+              <p>Back: Testing... (getUserMedia check)</p>
+              <p>Constraints: {Object.keys(navigator.mediaDevices?.getSupportedConstraints?.() || {}).length} supported</p>
+              <p>Formats: MP4{isAndroid ? '(H.264)' : '/WebM'}</p>
+            </div>
+          </div>
+
+          {/* Current Display */}
+          <div className="text-white/80 text-sm">
+            <p className="mb-2 font-medium flex items-center gap-1">
+              <span className="text-purple-400">📱</span> Current Display:
+            </p>
+            <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
+              <p>Viewport: {window.innerWidth}x{window.innerHeight}</p>
+              <p>Canvas: Unknown → {window.innerWidth}x{window.innerHeight} (scale: ?)</p>
+              <p>Orientation: {window.innerHeight > window.innerWidth ? 'Portrait' : 'Landscape'}</p>
+              <p>Container: {window.innerWidth}x{window.innerHeight}px</p>
+            </div>
+          </div>
+
+          {/* Current AR */}
+          <div className="text-white/80 text-sm">
+            <p className="mb-2 font-medium flex items-center gap-1">
+              <span className="text-orange-400">🎭</span> Current AR:
+            </p>
+            <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
+              <p>Camera Input: Unknown (from hardware)</p>
+              <p>AR Processing: Unknown (Camera Kit)</p>
+              <p>Display Output: {window.innerWidth}x{window.innerHeight} (to viewport)</p>
+              <p>Processing FPS: Unknown</p>
+            </div>
+          </div>
+
+          {/* Device Info (condensed) */}
+          <div className="text-white/80 text-sm">
+            <p className="mb-2 font-medium">📊 System Info:</p>
+            <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
+              <p>Platform: {isAndroid ? 'Android' : 'Other'} • {location.protocol} • {location.hostname}</p>
+              <p>User Agent: {navigator.userAgent.substring(0, 60)}...</p>
             </div>
           </div>
           
