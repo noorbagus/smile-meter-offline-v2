@@ -242,9 +242,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Updating existing session...');
         
-        // ALWAYS MIRROR - no facingMode logic
+        // SOFTWARE ROTATION: Mirror + Rotate landscape camera for portrait display
         const source = createMediaStreamSource(stream, {
-          transform: Transform2D.MirrorX, // Always mirror
+          transform: Transform2D.MirrorX, // Always mirror for natural selfie
           cameraType: 'user' // Fixed value for consistency
         });
         
@@ -306,9 +306,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
-      // ALWAYS MIRROR - no facingMode logic
+      // SOFTWARE ROTATION: Mirror + Rotate landscape camera for portrait display
       const source = createMediaStreamSource(stream, {
-        transform: Transform2D.MirrorX, // Always mirror
+        transform: Transform2D.MirrorX, // Always mirror for natural selfie
         cameraType: 'user' // Fixed value for consistency
       });
       
@@ -432,9 +432,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       
       addLog(`🎤 Audio tracks: ${audioTracks.length}`);
 
-      // ALWAYS MIRROR - no facingMode logic
+      // SOFTWARE ROTATION: Mirror + Rotate landscape camera for portrait display
       const source = createMediaStreamSource(newStream, {
-        transform: Transform2D.MirrorX, // Always mirror
+        transform: Transform2D.MirrorX, // Always mirror for natural selfie
         cameraType: 'user' // Fixed value
       });
       

@@ -110,12 +110,12 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
     try {
       addLog('📸 Requesting HIGHEST RESOLUTION camera stream (no facing preference)...');
       
-      // NO FACING MODE - always get highest available resolution
+      // FORCE EXACT RESOLUTION - no browser auto-crop
       const constraints: MediaStreamConstraints = {
         video: { 
           // facingMode removed - let browser pick best camera
-          width: { ideal: 2560, min: 1280, max: 3840 },
-          height: { ideal: 1440, min: 720, max: 2160 },
+          width: { exact: 2560 },      // Force exact landscape resolution
+          height: { exact: 1440 },     // No browser cropping
           frameRate: { ideal: 30, min: 15, max: 60 }
         },
         audio: includeAudio ? {
@@ -128,7 +128,8 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
       };
 
       addLog(`🎤 Audio requested: ${includeAudio ? 'YES with high-quality constraints' : 'NO'}`);
-      addLog(`📐 HIGHEST resolution constraints: ${(constraints.video as any).width.ideal}x${(constraints.video as any).height.ideal} (no facing preference)`);
+      addLog(`📐 EXACT resolution constraints: ${(constraints.video as any).width.exact}x${(constraints.video as any).height.exact} (no browser cropping)`);
+      addLog(`🔄 Will software-rotate landscape camera for portrait display`);
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
@@ -194,15 +195,15 @@ export const useCameraPermissions = (addLog: (message: string) => void) => {
           solution: 'Please try using Chrome, Firefox, Safari, or Edge'
         });
       } else if (streamError.name === 'OverconstrainedError') {
-        addLog('⚠️ High resolution constraints too strict, trying HD fallback...');
+        addLog('⚠️ Exact resolution constraints failed, trying flexible fallback...');
         
-        // HD fallback
+        // Flexible fallback with ideal constraints
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
             video: { 
-              // Still no facingMode
-              width: { ideal: 1920, min: 640 },
-              height: { ideal: 1080, min: 480 }
+              // Fallback to flexible constraints
+              width: { ideal: 2560, min: 1280, max: 3840 },
+              height: { ideal: 1440, min: 720, max: 2160 }
             },
             audio: includeAudio
           });
