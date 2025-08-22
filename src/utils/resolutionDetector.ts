@@ -9,21 +9,21 @@ export interface ResolutionCapability {
     needsRotation: boolean;
   }
   
-  // Camera resolution presets (descending priority)
+  // Camera resolution presets PORTRAIT (9:16 ratio)
   const CAMERA_PRESETS = [
-    { width: 3840, height: 2160, name: '4K' },
-    { width: 2560, height: 1440, name: '1440p' },
-    { width: 1920, height: 1080, name: '1080p' },
-    { width: 1280, height: 720, name: '720p' },
-    { width: 640, height: 480, name: '480p' }
+    { width: 2160, height: 3840, name: '4K Portrait' },
+    { width: 1440, height: 2560, name: '1440p Portrait' },
+    { width: 1080, height: 1920, name: '1080p Portrait' },
+    { width: 720, height: 1280, name: '720p Portrait' },
+    { width: 480, height: 640, name: '480p Portrait' }
   ];
   
-  // Display resolution presets
+  // Display resolution presets PORTRAIT
   const DISPLAY_PRESETS = [
-    { width: 3840, height: 2160, name: '4K' },
-    { width: 2560, height: 1440, name: '1440p' },
-    { width: 1920, height: 1080, name: '1080p' },
-    { width: 1280, height: 720, name: '720p' }
+    { width: 2160, height: 3840, name: '4K Portrait' },
+    { width: 1440, height: 2560, name: '1440p Portrait' },
+    { width: 1080, height: 1920, name: '1080p Portrait' },
+    { width: 720, height: 1280, name: '720p Portrait' }
   ];
   
   export const detectMaxCameraResolution = async (
@@ -64,8 +64,8 @@ export interface ResolutionCapability {
       }
     }
     
-    // Fallback
-    return { width: 640, height: 480, fps: 30 };
+    // Fallback to 720p portrait
+    return { width: 720, height: 1280, fps: 30 };
   };
   
   export const detectMaxDisplayResolution = (addLog: (msg: string) => void) => {
@@ -94,30 +94,26 @@ export interface ResolutionCapability {
       }
     }
     
-    // Use viewport size as fallback
+    // Use viewport size as fallback (portrait)
     return {
-      width: viewport.width,
-      height: viewport.height,
-      name: 'Viewport'
+      width: Math.min(viewport.width, viewport.height),
+      height: Math.max(viewport.width, viewport.height),
+      name: 'Viewport Portrait'
     };
   };
   
-  export const detectCameraRotationNeeded = (userAgent: string = navigator.userAgent): boolean => {
-    // Detect Brio or external cameras that need rotation
-    const needsRotation = /brio|logitech/i.test(userAgent) || 
-                         window.location.search.includes('rotate=true');
-    
-    return needsRotation;
+  export const detectCameraRotationNeeded = (): boolean => {
+    // ALWAYS need rotation for portrait mode
+    return true;
   };
   
   export const getOptimalConfiguration = async (
     facingMode: 'user' | 'environment' = 'user',
     addLog: (msg: string) => void
   ): Promise<ResolutionCapability> => {
-    const isPortrait = window.innerHeight > window.innerWidth;
     const needsRotation = detectCameraRotationNeeded();
     
-    addLog(`🔄 Camera rotation needed: ${needsRotation ? 'YES' : 'NO'}`);
+    addLog(`🔄 Portrait mode: ALWAYS rotate (${needsRotation ? 'YES' : 'NO'})`);
     
     const [maxCamera, maxDisplay] = await Promise.all([
       detectMaxCameraResolution(facingMode, addLog),
@@ -129,7 +125,7 @@ export interface ResolutionCapability {
       display: maxDisplay,
       canvas: maxDisplay, // Canvas matches display capability
       devicePixelRatio: window.devicePixelRatio || 1,
-      orientation: isPortrait ? 'portrait' : 'landscape',
-      needsRotation
+      orientation: 'portrait', // Always portrait
+      needsRotation: true // Always rotate
     };
   };

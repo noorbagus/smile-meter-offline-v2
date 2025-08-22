@@ -10,10 +10,10 @@ const detectMaxCameraResolution = async (
   addLog: (msg: string) => void
 ): Promise<{ width: number; height: number; fps: number }> => {
   const presets = [
-    { width: 3840, height: 2160, name: '4K' },
-    { width: 2560, height: 1440, name: '1440p' },
-    { width: 1920, height: 1080, name: '1080p' },
-    { width: 1280, height: 720, name: '720p' }
+    { width: 2160, height: 3840, name: '4K Portrait' },
+    { width: 1440, height: 2560, name: '1440p Portrait' },
+    { width: 1080, height: 1920, name: '1080p Portrait' },
+    { width: 720, height: 1280, name: '720p Portrait' }
   ];
   
   for (const preset of presets) {
@@ -44,7 +44,7 @@ const detectMaxCameraResolution = async (
     }
   }
   
-  return { width: 1280, height: 720, fps: 30 };
+  return { width: 720, height: 1280, fps: 30 };
 };
 
 const detectMaxDisplayResolution = (addLog: (msg: string) => void) => {
@@ -55,9 +55,9 @@ const detectMaxDisplayResolution = (addLog: (msg: string) => void) => {
   };
   
   const presets = [
-    { width: 3840, height: 2160, name: '4K' },
-    { width: 2560, height: 1440, name: '1440p' },
-    { width: 1920, height: 1080, name: '1080p' }
+    { width: 2160, height: 3840, name: '4K Portrait' },
+    { width: 1440, height: 2560, name: '1440p Portrait' },
+    { width: 1080, height: 1920, name: '1080p Portrait' }
   ];
   
   addLog(`📱 Physical screen: ${physical.width}x${physical.height} (DPR: ${dpr})`);
@@ -69,12 +69,7 @@ const detectMaxDisplayResolution = (addLog: (msg: string) => void) => {
     }
   }
   
-  return { width: 1920, height: 1080, name: 'HD' };
-};
-
-const needsCameraRotation = (): boolean => {
-  return /brio|logitech/i.test(navigator.userAgent) || 
-         window.location.search.includes('rotate=true');
+  return { width: 1080, height: 1920, name: 'HD Portrait' };
 };
 
 // Singleton Camera Kit instance
@@ -132,7 +127,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const isInitializedRef = useRef<boolean>(false);
   const resolutionConfigRef = useRef<any>(null);
 
-  // Adaptive canvas attachment with auto-rotation
+  // Portrait canvas attachment with 90° rotation
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
     containerReference: React.RefObject<HTMLDivElement>
@@ -157,20 +152,14 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         outputCanvasRef.current = canvas;
         
-        // Canvas managed by Camera Kit
-        addLog(`📊 Canvas: ${canvas.width}x${canvas.height} (Camera Kit controlled)`);
+        addLog(`📊 Canvas: ${canvas.width}x${canvas.height} (Portrait Mode)`);
         
-        // Detect orientation and rotation
-        const isPortrait = window.innerHeight > window.innerWidth;
-        const needsRotation = needsCameraRotation();
-        const orientation = isPortrait ? 'portrait' : 'landscape';
+        // PORTRAIT MODE - Always rotate 90°
+        const rotationTransform = 'rotate(90deg)';
         
-        addLog(`📱 Display: ${orientation} (${window.innerWidth}x${window.innerHeight})`);
-        addLog(`🔄 Camera rotation: ${needsRotation ? 'YES (90°)' : 'NO'}`);
+        addLog(`🔄 Portrait mode: ALWAYS rotate 90°`);
         
-        // CSS with optional rotation
-        const rotationTransform = needsRotation ? 'rotate(90deg)' : '';
-        
+        // CSS with portrait rotation
         canvas.style.cssText = `
           position: absolute;
           top: 0;
@@ -190,7 +179,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         canvas.className = 'absolute inset-0 w-full h-full object-contain';
         
-        // Container styling
+        // Container styling for portrait
         const container = containerReference.current;
         container.style.cssText = `
           position: relative;
@@ -209,7 +198,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           isAttachedRef.current = true;
           
           const rect = container.getBoundingClientRect();
-          addLog(`✅ Canvas attached (${orientation}${needsRotation ? ', rotated' : ''}): ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+          addLog(`✅ Canvas attached (PORTRAIT): ${Math.round(rect.width)}x${Math.round(rect.height)}`);
         } catch (e) {
           addLog(`❌ Canvas attachment failed: ${e}`);
         }
@@ -346,11 +335,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit with adaptive resolution...');
+      addLog('🎭 Initializing Camera Kit with portrait resolution...');
       setCameraState('initializing');
       containerRef.current = containerReference;
 
-      // Detect maximum capabilities
+      // Detect maximum capabilities (portrait)
       const [maxCamera, maxDisplay] = await Promise.all([
         detectMaxCameraResolution(currentFacingMode, addLog),
         Promise.resolve(detectMaxDisplayResolution(addLog))
@@ -476,15 +465,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Get maximum resolution for new camera
+      // Get maximum resolution for new camera (portrait)
       const maxCamera = await detectMaxCameraResolution(newFacingMode, addLog);
       
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: newFacingMode,
-            width: { ideal: maxCamera.width, min: 1280 },
-            height: { ideal: maxCamera.height, min: 720 },
+            width: { ideal: maxCamera.width, min: 720 },
+            height: { ideal: maxCamera.height, min: 1280 },
             frameRate: { ideal: 30 }
           },
           audio: true
