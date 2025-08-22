@@ -1,4 +1,4 @@
-// src/components/camera/CameraControls.tsx - ALL CONTROLS HIDDEN
+// src/components/camera/CameraControls.tsx - RESTORED UI
 import React from 'react';
 import { Settings, FlipHorizontal } from 'lucide-react';
 import { ControlButton } from '../ui';
@@ -9,11 +9,7 @@ interface CameraControlsProps {
   onFlip: () => void;
 }
 
-export const CameraControls: React.FC<CameraControlsProps> = () => {
-  // RETURN NULL - HIDE ALL CONTROLS
-  return null;
-
-  /* ORIGINAL CONTROLS - COMMENTED OUT
+export const CameraControls: React.FC<CameraControlsProps> = ({ onSettings, onFlip }) => {
   return (
     <div className="absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-10">
       <div className="flex justify-between items-center">
@@ -42,5 +38,4 @@ export const CameraControls: React.FC<CameraControlsProps> = () => {
       </div>
     </div>
   );
-  */
 };

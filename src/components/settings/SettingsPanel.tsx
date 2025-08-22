@@ -1,4 +1,4 @@
-// src/components/settings/SettingsPanel.tsx - SETTINGS PANEL HIDDEN
+// src/components/settings/SettingsPanel.tsx - RESTORED with Debug Display
 import React from 'react';
 import { X, Download } from 'lucide-react';
 import { detectAndroid } from '../../utils/androidRecorderFix';
@@ -10,11 +10,12 @@ interface SettingsPanelProps {
   onExportLogs?: () => void;
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = () => {
-  // RETURN NULL - HIDE SETTINGS PANEL
-  return null;
-
-  /* ORIGINAL SETTINGS PANEL - COMMENTED OUT
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({
+  isOpen,
+  onClose,
+  debugLogs,
+  onExportLogs
+}) => {
   if (!isOpen) return null;
 
   const isAndroid = detectAndroid();
@@ -49,6 +50,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = () => {
               <p>Platform: {isAndroid ? 'Android' : 'Other'}</p>
               <p>Protocol: {location.protocol}</p>
               <p>Host: {location.hostname}</p>
+              <p>Resolution: {window.innerWidth}x{window.innerHeight}</p>
+              <p>DPR: {window.devicePixelRatio}</p>
               <p>User Agent: {navigator.userAgent.substring(0, 50)}...</p>
             </div>
           </div>
@@ -99,5 +102,4 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = () => {
       </div>
     </div>
   );
-  */
 };

@@ -1,4 +1,4 @@
-// src/App.tsx - Hide all UI buttons, show only camera stream
+// src/App.tsx - Restored UI with debug overlays
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -10,8 +10,8 @@ import {
   LoadingScreen,
   ErrorScreen,
   CameraFeed,
-  // CameraControls,      // HIDDEN
-  // RecordingControls,   // HIDDEN
+  CameraControls,      // RESTORED
+  RecordingControls,   // RESTORED
   VideoPreview,
   SettingsPanel,
   RenderingModal
@@ -319,7 +319,7 @@ const CameraApp: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
-      {/* ONLY CAMERA FEED - NO UI BUTTONS */}
+      {/* Camera Feed */}
       <CameraFeed
         cameraFeedRef={cameraFeedRef}
         cameraState={cameraState}
@@ -327,8 +327,7 @@ const CameraApp: React.FC = () => {
         isFlipped={isFlipped}
       />
 
-      {/* ALL UI BUTTONS HIDDEN - COMMENTED OUT */}
-      {/*
+      {/* RESTORED UI CONTROLS */}
       <CameraControls
         onSettings={() => setShowSettings(true)}
         onFlip={() => setIsFlipped(!isFlipped)}
@@ -343,9 +342,8 @@ const CameraApp: React.FC = () => {
         formatTime={formatTime}
         disabled={!isReady}
       />
-      */}
 
-      {/* Keep essential modals for functionality */}
+      {/* Essential modals */}
       {cameraState === 'initializing' && (
         <LoadingScreen 
           message="Initializing Web AR Netramaya..."
