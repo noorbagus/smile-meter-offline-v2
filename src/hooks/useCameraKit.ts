@@ -1,11 +1,13 @@
-// src/hooks/useCameraKit.ts - Fixed AR screen orientation and touch
+// src/hooks/useCameraKit.ts - Push2Web integration
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
-import { createAdaptiveCameraKitConfig, validateConfig } from '../config/cameraKit';
+import { Push2Web } from '@snap/push2web';
+import { validateConfig } from '../config/cameraKit';
 import type { CameraState } from './useCameraPermissions';
 
 let cameraKitInstance: any = null;
 let preloadPromise: Promise<any> | null = null;
+let push2WebInstance: Push2Web | null = null;
 
 const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([
@@ -17,7 +19,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
 };
 
 const preloadCameraKit = async () => {
-  if (cameraKitInstance) return cameraKitInstance;
+  if (cameraKitInstance) return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
   if (preloadPromise) return preloadPromise;
   
   preloadPromise = (async () => {
@@ -27,13 +29,25 @@ const preloadCameraKit = async () => {
       }
       
       validateConfig();
-      cameraKitInstance = await bootstrapCameraKit({ 
-        apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI'
-      });
       
-      return cameraKitInstance;
+      // Initialize Push2Web
+      push2WebInstance = new Push2Web();
+      
+      // Bootstrap Camera Kit with Push2Web extension
+      cameraKitInstance = await bootstrapCameraKit(
+        { 
+          apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI'
+        },
+        (container) => {
+          container.provides(push2WebInstance!.extension);
+          return container;
+        }
+      );
+      
+      return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
     } catch (error) {
       cameraKitInstance = null;
+      push2WebInstance = null;
       preloadPromise = null;
       throw error;
     }
@@ -56,6 +70,115 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
   const isInitializedRef = useRef<boolean>(false);
   const currentConfigRef = useRef<any>(null);
+  const push2WebSubscribed = useRef<boolean>(false);
+
+  // Push2Web event handlers
+  const setupPush2WebEvents = useCallback((push2Web: Push2Web) => {
+    // Lens received event
+    push2Web.events.addEventListener('lensReceived', (event: any) => {
+      const { id, name, iconUrl, cameraFacingPreference } = event.detail;
+      addLog(`📦 Push2Web lens received: ${name} (${id})`);
+      addLog(`   Camera preference: ${cameraFacingPreference}`);
+      
+      // Apply lens to current session
+      if (sessionRef.current && lensRepositoryRef.current) {
+        try {
+          // Find lens in repository or use received lens directly
+          let targetLens = lensRepositoryRef.current.find((lens: any) => lens.id === id);
+          
+          if (!targetLens && event.detail) {
+            // Create lens object from Push2Web data
+            targetLens = {
+              id,
+              name,
+              iconUrl,
+              cameraFacingPreference
+            };
+          }
+          
+          if (targetLens) {
+            sessionRef.current.applyLens(targetLens).then(() => {
+              addLog(`✅ Push2Web lens applied: ${name}`);
+            }).catch((error: any) => {
+              addLog(`❌ Failed to apply Push2Web lens: ${error}`);
+            });
+          } else {
+            addLog(`❌ Lens not found in repository: ${id}`);
+          }
+        } catch (error) {
+          addLog(`❌ Push2Web lens application error: ${error}`);
+        }
+      } else {
+        addLog(`⚠️ Session or repository not ready for Push2Web lens`);
+      }
+    });
+
+    // Error event
+    push2Web.events.addEventListener('error', (event: any) => {
+      const errorDetails = event.detail;
+      addLog(`❌ Push2Web error: ${errorDetails}`);
+    });
+
+    // Subscription changed event
+    push2Web.events.addEventListener('subscriptionChanged', (event: any) => {
+      const subState = event.detail;
+      addLog(`🔗 Push2Web subscription changed: ${subState}`);
+      push2WebSubscribed.current = subState === 'subscribed';
+    });
+
+    addLog('🎭 Push2Web event handlers configured');
+  }, [addLog]);
+
+  // Subscribe to Push2Web
+  const subscribePush2Web = useCallback(async (accessToken: string): Promise<boolean> => {
+    try {
+      if (!push2WebInstance) {
+        addLog('❌ Push2Web instance not available');
+        return false;
+      }
+
+      if (!sessionRef.current) {
+        addLog('❌ Camera Kit session not ready for Push2Web');
+        return false;
+      }
+
+      if (!lensRepositoryRef.current) {
+        addLog('❌ Lens repository not loaded for Push2Web');
+        return false;
+      }
+
+      addLog('🔗 Subscribing to Push2Web...');
+      
+      // Create lens repository object compatible with Push2Web
+      const lensRepository = lensRepositoryRef.current;
+
+      await push2WebInstance.subscribe(
+        accessToken,
+        sessionRef.current,
+        lensRepository
+      );
+
+      push2WebSubscribed.current = true;
+      addLog('✅ Push2Web subscription successful');
+      addLog('📱 Ready to receive lenses from Lens Studio');
+      
+      return true;
+    } catch (error) {
+      addLog(`❌ Push2Web subscription failed: ${error}`);
+      push2WebSubscribed.current = false;
+      return false;
+    }
+  }, [addLog]);
+
+  // Get Push2Web status
+  const getPush2WebStatus = useCallback(() => {
+    return {
+      available: !!push2WebInstance,
+      subscribed: push2WebSubscribed.current,
+      session: !!sessionRef.current,
+      repository: !!lensRepositoryRef.current
+    };
+  }, []);
 
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
@@ -96,7 +219,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           displayWidth = containerRect.height * canvasAspect;
         }
         
-        // FIXED: Canvas styling - NO transforms, enable touch
+        // Perfect fit CSS
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
@@ -107,18 +230,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           object-fit: contain;
           object-position: center;
           background: transparent;
-          image-rendering: auto;
-          will-change: auto;
-          backface-visibility: visible;
-          pointer-events: auto;
-          touch-action: auto;
-          user-select: none;
-          -webkit-user-select: none;
-          -webkit-touch-callout: none;
-          -webkit-tap-highlight-color: transparent;
+          image-rendering: crisp-edges;
+          will-change: transform;
+          backface-visibility: hidden;
         `;
         
-        // FIXED: Container styling - ensure touch events work
         containerReference.current.style.cssText = `
           position: relative;
           width: 100%;
@@ -128,11 +244,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           align-items: center;
           justify-content: center;
           background: #000;
-          pointer-events: auto;
           touch-action: manipulation;
-          user-select: none;
-          -webkit-user-select: none;
-          -webkit-touch-callout: none;
         `;
         
         try {
@@ -141,18 +253,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           
           const scaleX = displayWidth / canvas.width;
           const scaleY = displayHeight / canvas.height;
-          addLog(`✅ Canvas attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)} | Touch: ENABLED`);
-          
-          // ADDED: Verify touch events work
-          canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            console.log('👆 Canvas touch detected');
-          }, { passive: false });
-          
-          canvas.addEventListener('click', () => {
-            console.log('🖱️ Canvas click detected');
-          });
-          
+          addLog(`✅ Canvas attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
         } catch (e) {
           addLog(`❌ Attachment failed: ${e}`);
         }
@@ -256,20 +357,28 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     containerReference: React.RefObject<HTMLDivElement>
   ): Promise<boolean> => {
     try {
-      const adaptiveConfig = createAdaptiveCameraKitConfig();
+      const adaptiveConfig = {
+        apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN,
+        lensId: import.meta.env.VITE_CAMERA_KIT_LENS_ID || '04441cd2-8e9d-420b-b293-90b5df8f577f',
+        lensGroupId: import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || 'cd5b1b49-4483-45ea-9772-cb241939e2ce',
+        canvas: {
+          width: Math.round(window.innerWidth * (window.devicePixelRatio || 1)),
+          height: Math.round(window.innerHeight * (window.devicePixelRatio || 1))
+        }
+      };
       currentConfigRef.current = adaptiveConfig;
       
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Updating existing session...');
         
-        // Keep mirroring for natural feel but no camera type
         const source = createMediaStreamSource(stream, {
-          transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined
+          transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+          cameraType: currentFacingMode
         });
         
         await withTimeout(sessionRef.current.setSource(source), 3000);
-        // Remove setRenderSize - not available in Camera Kit 1.8.0
-        addLog(`✅ Source set: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
+        await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
+        addLog(`✅ Adaptive render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -282,29 +391,25 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           }, 100);
         }
         
-        addLog('✅ Stream updated - natural orientation');
+        addLog('✅ Stream updated');
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit with natural orientation...');
+      addLog('🎭 Initializing Camera Kit with Push2Web...');
       addLog(`📐 Adaptive canvas: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
       setCameraState('initializing');
       containerRef.current = containerReference;
 
-      let cameraKit = cameraKitInstance;
-      if (!cameraKit) {
-        addLog('Bootstrapping Camera Kit...');
-        try {
-          cameraKit = await withTimeout(preloadCameraKit(), 10000);
-        } catch (ckError: any) {
-          addLog(`❌ Bootstrap failed: ${ckError.message}`);
-          setCameraState('error');
-          return false;
-        }
-      }
+      const { cameraKit, push2Web } = await withTimeout(preloadCameraKit(), 10000);
       
       if (!cameraKit) {
         throw new Error('Failed to initialize Camera Kit');
+      }
+
+      // Setup Push2Web events
+      if (push2Web) {
+        setupPush2WebEvents(push2Web);
+        addLog('✅ Push2Web extension loaded');
       }
 
       addLog('🎬 Creating session...');
@@ -318,16 +423,16 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
-      // Natural mirror for front camera only  
       const source = createMediaStreamSource(stream, {
-        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined
+        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+        cameraType: currentFacingMode
       });
       
       await withTimeout(session.setSource(source), 3000);
       addLog('✅ Camera source configured');
 
-      // Remove setRenderSize - not available in Camera Kit 1.8.0
-      addLog(`✅ AR render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
+      await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
+      addLog(`✅ Adaptive AR render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
 
       if (!lensRepositoryRef.current) {
         try {
@@ -357,13 +462,13 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
-          addLog('🎥 Attaching output with touch support...');
+          addLog('🎥 Attaching adaptive output...');
           attachCameraOutput(session.output.live, containerReference);
         }
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Camera Kit ready - Natural orientation, Touch enabled');
+      addLog('🎉 Camera Kit + Push2Web ready');
       return true;
 
     } catch (error: any) {
@@ -372,7 +477,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       setCameraState('error');
       return false;
     }
-  }, [currentFacingMode, addLog, attachCameraOutput, cameraState]);
+  }, [currentFacingMode, addLog, attachCameraOutput, cameraState, setupPush2WebEvents]);
 
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
     if (!sessionRef.current || !isInitializedRef.current) {
@@ -399,11 +504,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // LANDSCAPE constraints for camera switch
+      // LANDSCAPE constraints for camera switch (match Brio hardware)
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: newFacingMode,
+            // Request LANDSCAPE to match hardware sensor
             width: { ideal: 2560, min: 1280, max: 3840 },
             height: { ideal: 1440, min: 720, max: 2160 },
             frameRate: { ideal: 30, min: 15, max: 60 }
@@ -419,9 +525,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         5000
       );
 
-      addLog(`✅ New ${newFacingMode} stream obtained`);
+      addLog(`✅ New ${newFacingMode} LANDSCAPE stream obtained`);
       streamRef.current = newStream;
 
+      // Log new stream details with orientation check
       const videoTracks = newStream.getVideoTracks();
       const audioTracks = newStream.getAudioTracks();
       
@@ -432,22 +539,26 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         
         addLog(`📹 New stream: ${resolution}@${settings.frameRate}fps`);
         addLog(`🔄 Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
+        
+        if (!isLandscape) {
+          addLog(`⚠️ Expected landscape, got portrait - browser may have auto-rotated`);
+        }
       }
       
       addLog(`🎤 Audio tracks: ${audioTracks.length}`);
 
-      // Natural mirror for front camera only
       const source = createMediaStreamSource(newStream, {
-        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined
+        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+        cameraType: newFacingMode
       });
       
       await withTimeout(sessionRef.current.setSource(source), 3000);
-      addLog('✅ Source set - natural orientation');
+      addLog('✅ Source set');
 
       const config = currentConfigRef.current;
       if (config) {
-        // Remove setRenderSize - not available in Camera Kit 1.8.0
-        addLog(`✅ Config applied: ${config.canvas.width}x${config.canvas.height}`);
+        await source.setRenderSize(config.canvas.width, config.canvas.height);
+        addLog(`✅ Adaptive render: ${config.canvas.width}x${config.canvas.height}`);
       }
 
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -458,7 +569,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }
 
       setCurrentFacingMode(newFacingMode);
-      addLog(`🎉 Camera switched to ${newFacingMode} - Natural view`);
+      addLog(`🎉 Camera switched to ${newFacingMode}`);
       return newStream;
       
     } catch (error: any) {
@@ -501,6 +612,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       sessionRef.current.pause();
       addLog('⏸️ Session paused');
     }
+    push2WebSubscribed.current = false;
     isAttachedRef.current = false;
     containerRef.current = null;
     currentConfigRef.current = null;
@@ -527,6 +639,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     getStream,
     restoreCameraFeed,
     isReady: cameraState === 'ready',
-    isInitializing: cameraState === 'initializing'
+    isInitializing: cameraState === 'initializing',
+    subscribePush2Web,
+    getPush2WebStatus
   };
 };

@@ -1,4 +1,4 @@
-// src/App.tsx - Hidden UI version
+// src/App.tsx - Push2Web login integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -10,16 +10,23 @@ import {
   LoadingScreen,
   ErrorScreen,
   CameraFeed,
+  CameraControls,
+  RecordingControls,
   VideoPreview,
   SettingsPanel,
   RenderingModal
 } from './components';
+import { LoginKit } from './components/LoginKit';
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 
 const CameraApp: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [appReady, setAppReady] = useState<boolean>(false);
+  
+  // Push2Web login state
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [showLogin, setShowLogin] = useState<boolean>(false);
 
   const {
     cameraState,
@@ -39,7 +46,9 @@ const CameraApp: React.FC = () => {
     debugLogs,
     exportLogs,
     isReady,
-    restoreCameraFeed
+    restoreCameraFeed,
+    subscribePush2Web,
+    getPush2WebStatus
   } = useCameraContext();
 
   const {
@@ -58,6 +67,33 @@ const CameraApp: React.FC = () => {
     showRenderingModal,
     setShowRenderingModal
   } = useRecordingContext();
+
+  // Handle Snapchat login
+  const handleSnapchatLogin = useCallback(async (accessToken: string) => {
+    try {
+      addLog('🔗 Snapchat login successful, subscribing to Push2Web...');
+      const success = await subscribePush2Web(accessToken);
+      
+      if (success) {
+        setIsLoggedIn(true);
+        setShowLogin(false);
+        addLog('✅ Push2Web ready - can receive lenses from Lens Studio');
+      } else {
+        addLog('❌ Push2Web subscription failed');
+      }
+    } catch (error) {
+      addLog(`❌ Login error: ${error}`);
+    }
+  }, [subscribePush2Web, addLog]);
+
+  // Toggle login panel
+  const handleShowLogin = useCallback(() => {
+    if (isReady) {
+      setShowLogin(!showLogin);
+    } else {
+      addLog('⚠️ Camera must be ready before logging in');
+    }
+  }, [isReady, showLogin, addLog]);
 
   // Instagram redirect check
   useEffect(() => {
@@ -315,41 +351,12 @@ const CameraApp: React.FC = () => {
     );
   }
 
-  // KEY CHANGE: Show settings with keyboard shortcut (Cmd/Ctrl + D)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
-        e.preventDefault();
-        setShowSettings(!showSettings);
-        addLog(`🔧 Settings ${!showSettings ? 'opened' : 'closed'} via keyboard`);
-      }
-      
-      // Space to toggle recording
-      if (e.code === 'Space' && isReady) {
-        e.preventDefault();
-        handleToggleRecording();
-      }
-      
-      // C to switch camera
-      if (e.key === 'c' && isReady) {
-        e.preventDefault();
-        handleSwitchCamera();
-      }
-      
-      // R to reload lens
-      if (e.key === 'r' && isReady) {
-        e.preventDefault();
-        handleReloadEffect();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSettings, isReady, handleToggleRecording, handleSwitchCamera, handleReloadEffect, addLog]);
+  // Get Push2Web status for UI
+  const push2WebStatus = getPush2WebStatus();
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
-      {/* Camera Feed - FULL SCREEN, NO UI */}
+      {/* Camera Feed */}
       <CameraFeed
         cameraFeedRef={cameraFeedRef}
         cameraState={cameraState}
@@ -357,11 +364,98 @@ const CameraApp: React.FC = () => {
         isFlipped={isFlipped}
       />
 
-      {/* UI CONTROLS HIDDEN - Only camera feed visible */}
-      {/* All 4 buttons (Settings, Flip, Record, Switch Camera, Reload) are hidden */}
-      {/* Camera feed takes full screen */}
+      {/* Push2Web Login Button (Development only) */}
+      {import.meta.env.DEV && isReady && (
+        <div className="absolute top-20 right-4 z-40">
+          <button
+            onClick={handleShowLogin}
+            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+              isLoggedIn 
+                ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
+                : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+            }`}
+          >
+            {isLoggedIn ? '🔗 Push2Web ON' : '📱 Lens Studio'}
+          </button>
+          
+          {push2WebStatus.available && (
+            <div className="text-xs text-white/60 mt-1 text-center">
+              {push2WebStatus.subscribed ? '✅ Ready' : '⏸️ Offline'}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Essential modals only */}
+      {/* Login Panel */}
+      {showLogin && (
+        <div className="absolute top-0 right-0 w-80 h-full bg-black/80 backdrop-blur-md z-50 p-4">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-white font-semibold">Lens Studio Connection</h3>
+            <button
+              onClick={() => setShowLogin(false)}
+              className="text-white/60 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+          
+          {!isLoggedIn ? (
+            <div className="space-y-4">
+              <p className="text-white/80 text-sm">
+                Login with Snapchat to receive lenses from Lens Studio
+              </p>
+              
+              <LoginKit onLogin={handleSnapchatLogin} />
+              
+              <div className="text-xs text-white/50 space-y-1">
+                <p>• Open Lens Studio</p>
+                <p>• Login with same Snapchat account</p>
+                <p>• Send lens to Camera Kit</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="text-green-400 text-sm">
+                ✅ Connected to Lens Studio
+              </div>
+              
+              <div className="text-white/80 text-sm space-y-2">
+                <p>Ready to receive lenses!</p>
+                <p>Status: {push2WebStatus.subscribed ? 'Online' : 'Offline'}</p>
+              </div>
+              
+              <button
+                onClick={() => {
+                  setIsLoggedIn(false);
+                  setShowLogin(false);
+                  addLog('🔌 Push2Web disconnected');
+                }}
+                className="w-full px-4 py-2 bg-red-500/20 text-red-300 rounded-lg border border-red-500/30 text-sm"
+              >
+                Disconnect
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Camera Controls */}
+      <CameraControls
+        onSettings={() => setShowSettings(true)}
+        onFlip={() => setIsFlipped(!isFlipped)}
+      />
+
+      <RecordingControls
+        recordingState={recordingState}
+        recordingTime={recordingTime}
+        onToggleRecording={handleToggleRecording}
+        onGallery={handleReloadEffect}
+        onSwitchCamera={handleSwitchCamera}
+        formatTime={formatTime}
+        disabled={!isReady}
+      />
+
+      {/* Essential modals */}
       {cameraState === 'initializing' && (
         <LoadingScreen 
           message="Initializing Web AR Netramaya..."
@@ -389,8 +483,8 @@ const CameraApp: React.FC = () => {
         debugLogs={debugLogs}
         onExportLogs={exportLogs}
         currentStream={getStream()}
-        canvas={getCanvas()}                
-        containerRef={cameraFeedRef}        
+        canvas={getCanvas()}
+        containerRef={cameraFeedRef}
       />
 
       <RenderingModal
@@ -405,13 +499,6 @@ const CameraApp: React.FC = () => {
           setTimeout(() => restoreCameraFeed(), 100);
         }}
       />
-
-      {/* Hidden keyboard shortcuts info - only shows in dev mode */}
-      {import.meta.env.MODE === 'development' && (
-        <div className="fixed bottom-2 left-2 text-white/30 text-xs font-mono">
-          Cmd+D: Settings | Space: Record | C: Camera | R: Reload
-        </div>
-      )}
     </div>
   );
 };

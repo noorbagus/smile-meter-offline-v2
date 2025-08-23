@@ -1,4 +1,4 @@
-// src/context/CameraContext.tsx - Add reloadLens to interface
+// src/context/CameraContext.tsx - Push2Web integration
 import React, { createContext, useContext, useRef } from 'react';
 import { useCameraKit, useCameraPermissions, useDebugLogger } from '../hooks';
 import type { CameraState, PermissionState, ErrorInfo } from '../hooks';
@@ -9,7 +9,7 @@ interface CameraContextValue {
   currentFacingMode: 'user' | 'environment';
   initializeCameraKit: (stream: MediaStream, containerRef: React.RefObject<HTMLDivElement>) => Promise<boolean>;
   switchCamera: () => Promise<MediaStream | null>;
-  reloadLens: () => Promise<boolean>; // NEW: Added this
+  reloadLens: () => Promise<boolean>;
   pauseSession: () => void;
   resumeSession: () => void;
   cleanup: () => void;
@@ -33,6 +33,15 @@ interface CameraContextValue {
   addLog: (message: string, level?: 'info' | 'warning' | 'error' | 'success') => void;
   clearLogs: () => void;
   exportLogs: () => void;
+  
+  // Push2Web Functions
+  subscribePush2Web: (accessToken: string) => Promise<boolean>;
+  getPush2WebStatus: () => {
+    available: boolean;
+    subscribed: boolean;
+    session: boolean;
+    repository: boolean;
+  };
   
   // Refs
   cameraFeedRef: React.RefObject<HTMLDivElement>;
@@ -72,7 +81,7 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     currentFacingMode,
     initializeCameraKit,
     switchCamera,
-    reloadLens, // NEW: Get from hook
+    reloadLens,
     pauseSession,
     resumeSession,
     cleanup,
@@ -80,7 +89,9 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     getStream,
     restoreCameraFeed,
     isReady,
-    isInitializing
+    isInitializing,
+    subscribePush2Web,
+    getPush2WebStatus
   } = useCameraKit(addLog);
 
   const value: CameraContextValue = {
@@ -89,7 +100,7 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     currentFacingMode,
     initializeCameraKit,
     switchCamera,
-    reloadLens, // NEW: Added to value
+    reloadLens,
     pauseSession,
     resumeSession,
     cleanup,
@@ -113,6 +124,10 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     addLog,
     clearLogs,
     exportLogs,
+    
+    // Push2Web Functions
+    subscribePush2Web,
+    getPush2WebStatus,
     
     // Refs
     cameraFeedRef
