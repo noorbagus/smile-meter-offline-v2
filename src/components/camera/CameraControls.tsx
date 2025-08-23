@@ -1,4 +1,4 @@
-// src/components/camera/CameraControls.tsx - RESTORED UI
+// src/components/camera/CameraControls.tsx - Disabled flip button
 import React from 'react';
 import { Settings, FlipHorizontal } from 'lucide-react';
 import { ControlButton } from '../ui';
@@ -9,7 +9,7 @@ interface CameraControlsProps {
   onFlip: () => void;
 }
 
-export const CameraControls: React.FC<CameraControlsProps> = ({ onSettings, onFlip }) => {
+export const CameraControls: React.FC<CameraControlsProps> = ({ onSettings }) => {
   return (
     <div className="absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-10">
       <div className="flex justify-between items-center">
@@ -30,10 +30,13 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onSettings, onFl
           )}
         </div>
         
+        {/* Flip button disabled - Camera Kit handles orientation */}
         <ControlButton 
           icon={FlipHorizontal} 
-          onClick={onFlip} 
-          label="Flip"
+          onClick={() => {}} // Empty function - disabled
+          label="Flip (disabled)"
+          disabled={true}
+          className="opacity-30"
         />
       </div>
     </div>

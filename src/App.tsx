@@ -1,4 +1,4 @@
-// src/App.tsx - Restored UI with debug overlays
+// src/App.tsx - Removed isFlipped logic
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -10,8 +10,8 @@ import {
   LoadingScreen,
   ErrorScreen,
   CameraFeed,
-  CameraControls,      // RESTORED
-  RecordingControls,   // RESTORED
+  CameraControls,
+  RecordingControls,
   VideoPreview,
   SettingsPanel,
   RenderingModal
@@ -19,7 +19,6 @@ import {
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 
 const CameraApp: React.FC = () => {
-  const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [appReady, setAppReady] = useState<boolean>(false);
 
@@ -319,18 +318,18 @@ const CameraApp: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
-      {/* Camera Feed */}
+      {/* Camera Feed - NO isFlipped prop */}
       <CameraFeed
         cameraFeedRef={cameraFeedRef}
         cameraState={cameraState}
         recordingState={recordingState}
-        isFlipped={isFlipped}
+        isFlipped={false} // Always false - Camera Kit handles orientation
       />
 
-      {/* RESTORED UI CONTROLS */}
+      {/* Camera Controls - NO onFlip handler */}
       <CameraControls
         onSettings={() => setShowSettings(true)}
-        onFlip={() => setIsFlipped(!isFlipped)}
+        onFlip={() => {}} // Empty function - flip disabled
       />
 
       <RecordingControls
@@ -370,9 +369,9 @@ const CameraApp: React.FC = () => {
         onClose={() => setShowSettings(false)}
         debugLogs={debugLogs}
         onExportLogs={exportLogs}
-        currentStream={getStream()}          // REAL current stream
-        canvas={getCanvas()}                 // REAL canvas element  
-        containerRef={cameraFeedRef}         // REAL container ref
+        currentStream={getStream()}
+        canvas={getCanvas()}
+        containerRef={cameraFeedRef}
       />
 
       <RenderingModal

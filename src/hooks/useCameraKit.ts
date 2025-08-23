@@ -1,24 +1,21 @@
-// src/hooks/useCameraKit.ts - Complete Error-Free Version
+// src/hooks/useCameraKit.ts - Fixed AR screen orientation and touch
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { createAdaptiveCameraKitConfig, validateConfig } from '../config/cameraKit';
 import type { CameraState } from './useCameraPermissions';
 
-// Global Camera Kit Instance
 let cameraKitInstance: any = null;
 let preloadPromise: Promise<any> | null = null;
 
-// Timeout wrapper
-const withTimeout = <T>(promise: Promise<T>, ms: number, operation: string): Promise<T> => {
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error(`${operation} timeout after ${ms}ms`)), ms)
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
     )
   ]);
 };
 
-// Preload Camera Kit
 const preloadCameraKit = async () => {
   if (cameraKitInstance) return cameraKitInstance;
   if (preloadPromise) return preloadPromise;
@@ -30,13 +27,10 @@ const preloadCameraKit = async () => {
       }
       
       validateConfig();
-      cameraKitInstance = await withTimeout(
-        bootstrapCameraKit({ 
-          apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI'
-        }),
-        10000,
-        'Camera Kit Bootstrap'
-      );
+      cameraKitInstance = await bootstrapCameraKit({ 
+        apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI'
+      });
+      
       return cameraKitInstance;
     } catch (error) {
       cameraKitInstance = null;
@@ -50,82 +44,6 @@ const preloadCameraKit = async () => {
 
 preloadCameraKit().catch(console.error);
 
-// Resolution Profile Interface
-interface ResolutionProfile {
-  camera: { width: number; height: number };
-  canvas: { width: number; height: number };
-  display: { width: number; height: number };
-  scaling: number;
-  pixelPerfect: boolean;
-}
-
-// Calculate Perfect Resolution - NO PARAMETERS
-const calculatePerfectResolution = (): ResolutionProfile => {
-  const containerWidth = window.innerWidth;
-  const containerHeight = window.innerHeight;
-  
-  const dpr = window.devicePixelRatio || 1;
-  const physicalWidth = Math.round(containerWidth * dpr);
-  const physicalHeight = Math.round(containerHeight * dpr);
-  
-  const evenWidth = physicalWidth + (physicalWidth % 2);
-  const evenHeight = physicalHeight + (physicalHeight % 2);
-  
-  const maxDimension = 2048;
-  const canvasWidth = Math.min(evenWidth, maxDimension);
-  const canvasHeight = Math.min(evenHeight, maxDimension);
-  
-  const scalingX = canvasWidth / containerWidth;
-  const scalingY = canvasHeight / containerHeight;
-  const scaling = Math.max(scalingX, scalingY);
-  const pixelPerfect = Math.abs(scaling - Math.round(scaling)) < 0.01;
-  
-  return {
-    camera: { width: canvasWidth, height: canvasHeight },
-    canvas: { width: canvasWidth, height: canvasHeight },
-    display: { width: containerWidth, height: containerHeight },
-    scaling,
-    pixelPerfect
-  };
-};
-
-// Anti-Pixelated Canvas Styler
-const applyAntiPixelatedStyling = (
-  canvas: HTMLCanvasElement,
-  displayWidth: number,
-  displayHeight: number,
-  isFlipped: boolean = false
-) => {
-  const transform = isFlipped 
-    ? 'translate(-50%, -50%) scaleX(-1) translateZ(0)'
-    : 'translate(-50%, -50%) translateZ(0)';
-  
-  canvas.style.cssText = `
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: ${displayWidth}px;
-    height: ${displayHeight}px;
-    transform: ${transform};
-    image-rendering: smooth;
-    object-fit: contain;
-    object-position: center;
-    will-change: transform;
-    backface-visibility: hidden;
-    filter: blur(0px);
-    background: transparent;
-    border: none;
-    outline: none;
-    pointer-events: none;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-  `;
-  
-  // Removed WebGL context access - Canvas is controlled by Snap Camera Kit OffscreenCanvas
-};
-
-// Main Hook
 export const useCameraKit = (addLog: (message: string) => void) => {
   const [cameraState, setCameraState] = useState<CameraState>('initializing');
   const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
@@ -134,14 +52,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const streamRef = useRef<MediaStream | null>(null);
   const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lensRepositoryRef = useRef<any>(null);
-  const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
-  const resolutionProfileRef = useRef<ResolutionProfile | null>(null);
-  
   const isAttachedRef = useRef<boolean>(false);
+  const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
   const isInitializedRef = useRef<boolean>(false);
   const currentConfigRef = useRef<any>(null);
 
-  // Canvas Attachment
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
     containerReference: React.RefObject<HTMLDivElement>
@@ -151,54 +66,102 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       return;
     }
 
-    requestAnimationFrame(() => {
-      if (!containerReference.current) return;
+    try {
+      requestAnimationFrame(() => {
+        if (!containerReference.current) return;
 
-      while (containerReference.current.firstChild) {
-        try {
-          containerReference.current.removeChild(containerReference.current.firstChild);
-        } catch (e) {
-          break;
+        // Clear container
+        while (containerReference.current.firstChild) {
+          try {
+            containerReference.current.removeChild(containerReference.current.firstChild);
+          } catch (e) {
+            break;
+          }
         }
-      }
-      
-      outputCanvasRef.current = canvas;
-      
-      // Use cached profile or calculate new one
-      const profile = resolutionProfileRef.current || calculatePerfectResolution();
-      
-      applyAntiPixelatedStyling(
-        canvas,
-        profile.display.width,
-        profile.display.height,
-        currentFacingMode === 'user'
-      );
-      
-      containerReference.current.style.cssText = `
-        position: relative;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #000;
-        touch-action: manipulation;
-        image-rendering: smooth;
-        will-change: transform;
-      `;
-      
-      try {
-        containerReference.current.appendChild(canvas);
-        isAttachedRef.current = true;
-        addLog(`✅ Canvas attached: ${canvas.width}x${canvas.height} → ${profile.display.width}x${profile.display.height}`);
-      } catch (e) {
-        addLog(`❌ Canvas attachment failed: ${e}`);
-      }
-    });
-  }, [addLog, currentFacingMode]);
+        
+        outputCanvasRef.current = canvas;
+        addLog(`📊 Canvas: ${canvas.width}x${canvas.height}`);
+        
+        // Perfect fit calculations
+        const containerRect = containerReference.current.getBoundingClientRect();
+        const canvasAspect = canvas.width / canvas.height;
+        const containerAspect = containerRect.width / containerRect.height;
+        
+        let displayWidth, displayHeight;
+        if (canvasAspect > containerAspect) {
+          displayWidth = containerRect.width;
+          displayHeight = containerRect.width / canvasAspect;
+        } else {
+          displayHeight = containerRect.height;
+          displayWidth = containerRect.height * canvasAspect;
+        }
+        
+        // FIXED: Canvas styling - NO transforms, enable touch
+        canvas.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: ${displayWidth}px;
+          height: ${displayHeight}px;
+          transform: translate(-50%, -50%);
+          object-fit: contain;
+          object-position: center;
+          background: transparent;
+          image-rendering: auto;
+          will-change: auto;
+          backface-visibility: visible;
+          pointer-events: auto;
+          touch-action: auto;
+          user-select: none;
+          -webkit-user-select: none;
+          -webkit-touch-callout: none;
+          -webkit-tap-highlight-color: transparent;
+        `;
+        
+        // FIXED: Container styling - ensure touch events work
+        containerReference.current.style.cssText = `
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #000;
+          pointer-events: auto;
+          touch-action: manipulation;
+          user-select: none;
+          -webkit-user-select: none;
+          -webkit-touch-callout: none;
+        `;
+        
+        try {
+          containerReference.current.appendChild(canvas);
+          isAttachedRef.current = true;
+          
+          const scaleX = displayWidth / canvas.width;
+          const scaleY = displayHeight / canvas.height;
+          addLog(`✅ Canvas attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)} | Touch: ENABLED`);
+          
+          // ADDED: Verify touch events work
+          canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            console.log('👆 Canvas touch detected');
+          }, { passive: false });
+          
+          canvas.addEventListener('click', () => {
+            console.log('🖱️ Canvas click detected');
+          });
+          
+        } catch (e) {
+          addLog(`❌ Attachment failed: ${e}`);
+        }
+      });
+    } catch (error) {
+      addLog(`❌ Canvas error: ${error}`);
+    }
+  }, [addLog]);
 
-  // Camera Feed Restoration
   const restoreCameraFeed = useCallback(() => {
     if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
       addLog('🔄 Restoring camera feed...');
@@ -208,17 +171,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       if (!isCanvasAttached) {
         addLog('📱 Re-attaching canvas');
         attachCameraOutput(outputCanvasRef.current, containerRef.current);
-      } else {
-        const profile = resolutionProfileRef.current;
-        if (profile) {
-          applyAntiPixelatedStyling(
-            outputCanvasRef.current,
-            profile.display.width,
-            profile.display.height,
-            currentFacingMode === 'user'
-          );
-          addLog('🎨 Canvas styling refreshed');
-        }
       }
       
       if (sessionRef.current.output?.live) {
@@ -230,9 +182,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         }
       }
     }
-  }, [addLog, attachCameraOutput, currentFacingMode]);
+  }, [addLog, attachCameraOutput]);
 
-  // Lens Reload
   const reloadLens = useCallback(async (): Promise<boolean> => {
     if (!sessionRef.current || !isInitializedRef.current) {
       addLog('❌ Cannot reload - session not ready');
@@ -246,7 +197,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       await new Promise(resolve => setTimeout(resolve, 200));
       
       try {
-        await withTimeout(sessionRef.current.removeLens(), 3000, 'Lens Removal');
+        await withTimeout(sessionRef.current.removeLens(), 2000);
         addLog('🗑️ Lens removed');
       } catch (removeError) {
         addLog(`⚠️ Lens removal failed: ${removeError}`);
@@ -257,15 +208,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       const lenses = lensRepositoryRef.current;
       if (lenses && lenses.length > 0 && currentConfigRef.current) {
         const targetLens = lenses.find((lens: any) => lens.id === currentConfigRef.current.lensId) || lenses[0];
-        await withTimeout(sessionRef.current.applyLens(targetLens), 5000, 'Lens Application');
-        addLog(`✅ Lens restarted: ${targetLens.name || 'Default'}`);
+        await withTimeout(sessionRef.current.applyLens(targetLens), 3000);
+        addLog(`✅ Lens restarted: ${targetLens.name}`);
       }
       
       sessionRef.current.play('live');
       
       setTimeout(() => {
         restoreCameraFeed();
-      }, 500);
+      }, 300);
       
       addLog('🎉 AR lens restarted');
       return true;
@@ -283,32 +234,42 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
   }, [addLog, restoreCameraFeed]);
 
-  // Camera Kit Initialization - ZERO ARGUMENTS FOR calculatePerfectResolution
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        addLog('👁️ App visible - checking camera...');
+        setTimeout(() => {
+          restoreCameraFeed();
+        }, 100);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [addLog, restoreCameraFeed]);
+
   const initializeCameraKit = useCallback(async (
     stream: MediaStream,
     containerReference: React.RefObject<HTMLDivElement>
   ): Promise<boolean> => {
     try {
-      // Calculate resolution profile - NO ARGUMENTS
-      const resolutionProfile = calculatePerfectResolution();
-      resolutionProfileRef.current = resolutionProfile;
-      
-      // Create adaptive config - no parameters needed
       const adaptiveConfig = createAdaptiveCameraKitConfig();
-      adaptiveConfig.canvas.width = resolutionProfile.canvas.width;
-      adaptiveConfig.canvas.height = resolutionProfile.canvas.height;
       currentConfigRef.current = adaptiveConfig;
       
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Updating existing session...');
         
+        // Keep mirroring for natural feel but no camera type
         const source = createMediaStreamSource(stream, {
-          transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
-          cameraType: currentFacingMode
+          transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined
         });
         
-        await withTimeout(sessionRef.current.setSource(source), 5000, 'Source Update');
-        await source.setRenderSize(resolutionProfile.canvas.width, resolutionProfile.canvas.height);
+        await withTimeout(sessionRef.current.setSource(source), 3000);
+        // Remove setRenderSize - not available in Camera Kit 1.8.0
+        addLog(`✅ Source set: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
         
         streamRef.current = stream;
         containerRef.current = containerReference;
@@ -318,28 +279,36 @@ export const useCameraKit = (addLog: (message: string) => void) => {
             if (sessionRef.current.output.live) {
               attachCameraOutput(sessionRef.current.output.live, containerReference);
             }
-          }, 200);
+          }, 100);
         }
         
-        addLog('✅ Session updated');
+        addLog('✅ Stream updated - natural orientation');
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit...');
+      addLog('🎭 Initializing Camera Kit with natural orientation...');
+      addLog(`📐 Adaptive canvas: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
       setCameraState('initializing');
       containerRef.current = containerReference;
 
       let cameraKit = cameraKitInstance;
       if (!cameraKit) {
-        addLog('🚀 Bootstrapping Camera Kit...');
-        cameraKit = await withTimeout(preloadCameraKit(), 12000, 'Camera Kit Bootstrap');
+        addLog('Bootstrapping Camera Kit...');
+        try {
+          cameraKit = await withTimeout(preloadCameraKit(), 10000);
+        } catch (ckError: any) {
+          addLog(`❌ Bootstrap failed: ${ckError.message}`);
+          setCameraState('error');
+          return false;
+        }
       }
       
       if (!cameraKit) {
         throw new Error('Failed to initialize Camera Kit');
       }
 
-      const session: any = await withTimeout(cameraKit.createSession(), 8000, 'Session Creation');
+      addLog('🎬 Creating session...');
+      const session: any = await withTimeout(cameraKit.createSession(), 5000);
       sessionRef.current = session;
       streamRef.current = stream;
       isInitializedRef.current = true;
@@ -349,24 +318,25 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
+      // Natural mirror for front camera only  
       const source = createMediaStreamSource(stream, {
-        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
-        cameraType: currentFacingMode
+        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined
       });
       
-      await withTimeout(session.setSource(source), 5000, 'Source Configuration');
-      await source.setRenderSize(resolutionProfile.canvas.width, resolutionProfile.canvas.height);
-      addLog(`✅ Render size: ${resolutionProfile.canvas.width}x${resolutionProfile.canvas.height}`);
+      await withTimeout(session.setSource(source), 3000);
+      addLog('✅ Camera source configured');
+
+      // Remove setRenderSize - not available in Camera Kit 1.8.0
+      addLog(`✅ AR render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
 
       if (!lensRepositoryRef.current) {
         try {
           const lensResult: any = await withTimeout(
             cameraKit.lensRepository.loadLensGroups([adaptiveConfig.lensGroupId]), 
-            8000,
-            'Lens Repository Loading'
+            5000
           );
           lensRepositoryRef.current = lensResult.lenses;
-          addLog(`✅ Lens repository loaded: ${lensResult.lenses.length} lenses`);
+          addLog('✅ Lens repository loaded');
         } catch (lensError) {
           addLog(`⚠️ Lens loading failed: ${lensError}`);
         }
@@ -376,8 +346,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       if (lenses && lenses.length > 0) {
         try {
           const targetLens = lenses.find((lens: any) => lens.id === adaptiveConfig.lensId) || lenses[0];
-          await withTimeout(session.applyLens(targetLens), 5000, 'Lens Application');
-          addLog(`✅ Lens applied: ${targetLens.name || 'Default'}`);
+          await withTimeout(session.applyLens(targetLens), 3000);
+          addLog(`✅ Lens applied: ${targetLens.name}`);
         } catch (lensApplyError) {
           addLog(`⚠️ Lens application failed: ${lensApplyError}`);
         }
@@ -387,22 +357,23 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
+          addLog('🎥 Attaching output with touch support...');
           attachCameraOutput(session.output.live, containerReference);
         }
-      }, 600);
+      }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Camera Kit Complete!');
+      addLog('🎉 Camera Kit ready - Natural orientation, Touch enabled');
       return true;
 
     } catch (error: any) {
-      addLog(`❌ Camera Kit error: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addLog(`❌ Camera Kit error: ${errorMessage}`);
       setCameraState('error');
       return false;
     }
   }, [currentFacingMode, addLog, attachCameraOutput, cameraState]);
 
-  // Camera Switch
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
     if (!sessionRef.current || !isInitializedRef.current) {
       addLog('❌ Cannot switch - session not initialized');
@@ -415,71 +386,79 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       if (sessionRef.current.output?.live) {
         sessionRef.current.pause();
+        addLog('⏸️ Session paused');
       }
 
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+          addLog(`🛑 Stopped ${track.kind} track`);
+        });
         streamRef.current = null;
       }
 
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Use cached resolution profile or defaults
-      const profile = resolutionProfileRef.current;
-      const cameraWidth = profile?.camera.width || 1920;
-      const cameraHeight = profile?.camera.height || 1080;
-
+      // LANDSCAPE constraints for camera switch
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: newFacingMode,
-            width: { ideal: cameraWidth, min: 640, max: 3840 },
-            height: { ideal: cameraHeight, min: 480, max: 2160 },
+            width: { ideal: 2560, min: 1280, max: 3840 },
+            height: { ideal: 1440, min: 720, max: 2160 },
             frameRate: { ideal: 30, min: 15, max: 60 }
           },
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            sampleRate: { ideal: 48000 },
+            channelCount: { ideal: 2 }
           }
         }),
-        8000,
-        'Camera Switch Stream'
+        5000
       );
 
+      addLog(`✅ New ${newFacingMode} stream obtained`);
       streamRef.current = newStream;
 
+      const videoTracks = newStream.getVideoTracks();
+      const audioTracks = newStream.getAudioTracks();
+      
+      if (videoTracks.length > 0) {
+        const settings = videoTracks[0].getSettings();
+        const resolution = `${settings.width}x${settings.height}`;
+        const isLandscape = (settings.width || 0) > (settings.height || 0);
+        
+        addLog(`📹 New stream: ${resolution}@${settings.frameRate}fps`);
+        addLog(`🔄 Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
+      }
+      
+      addLog(`🎤 Audio tracks: ${audioTracks.length}`);
+
+      // Natural mirror for front camera only
       const source = createMediaStreamSource(newStream, {
-        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
-        cameraType: newFacingMode
+        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined
       });
       
-      await withTimeout(sessionRef.current.setSource(source), 5000, 'Source Switch');
+      await withTimeout(sessionRef.current.setSource(source), 3000);
+      addLog('✅ Source set - natural orientation');
 
-      if (profile) {
-        await source.setRenderSize(profile.canvas.width, profile.canvas.height);
+      const config = currentConfigRef.current;
+      if (config) {
+        // Remove setRenderSize - not available in Camera Kit 1.8.0
+        addLog(`✅ Config applied: ${config.canvas.width}x${config.canvas.height}`);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 400));
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       if (sessionRef.current.output?.live) {
         sessionRef.current.play('live');
+        addLog('▶️ Session resumed');
       }
 
       setCurrentFacingMode(newFacingMode);
-      
-      setTimeout(() => {
-        if (outputCanvasRef.current && profile) {
-          applyAntiPixelatedStyling(
-            outputCanvasRef.current,
-            profile.display.width,
-            profile.display.height,
-            newFacingMode === 'user'
-          );
-        }
-      }, 200);
-
-      addLog(`🎉 Camera switched to ${newFacingMode}`);
+      addLog(`🎉 Camera switched to ${newFacingMode} - Natural view`);
       return newStream;
       
     } catch (error: any) {
@@ -489,7 +468,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         if (sessionRef.current.output?.live) {
           sessionRef.current.play('live');
         }
+        addLog('🔄 Restored previous state');
       } catch (recoveryError) {
+        addLog(`❌ Recovery failed: ${recoveryError}`);
         setCameraState('error');
       }
       
@@ -497,7 +478,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     }
   }, [currentFacingMode, addLog]);
 
-  // Session Controls
   const pauseSession = useCallback(() => {
     if (sessionRef.current) {
       sessionRef.current.pause();
@@ -515,33 +495,24 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const cleanup = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
+      addLog('🔄 Stream stopped');
     }
     if (sessionRef.current) {
       sessionRef.current.pause();
+      addLog('⏸️ Session paused');
     }
     isAttachedRef.current = false;
     containerRef.current = null;
     currentConfigRef.current = null;
-    resolutionProfileRef.current = null;
-    addLog('🧹 Cleanup complete');
   }, [addLog]);
 
-  // Getters
-  const getCanvas = useCallback(() => outputCanvasRef.current, []);
-  const getStream = useCallback(() => streamRef.current, []);
-  const getResolutionProfile = useCallback(() => resolutionProfileRef.current, []);
+  const getCanvas = useCallback(() => {
+    return outputCanvasRef.current;
+  }, []);
 
-  // Auto-recovery
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && cameraState === 'ready') {
-        setTimeout(() => restoreCameraFeed(), 150);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [restoreCameraFeed, cameraState]);
+  const getStream = useCallback(() => {
+    return streamRef.current;
+  }, []);
 
   return {
     cameraState,
@@ -552,10 +523,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     pauseSession,
     resumeSession,
     cleanup,
-    restoreCameraFeed,
     getCanvas,
     getStream,
-    getResolutionProfile,
+    restoreCameraFeed,
     isReady: cameraState === 'ready',
     isInitializing: cameraState === 'initializing'
   };

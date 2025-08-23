@@ -1,4 +1,4 @@
-// src/components/camera/RecordingControls.tsx - RESTORED UI
+// src/components/camera/RecordingControls.tsx - Ensure no touch blocking
 import React from 'react';
 import { SwitchCamera, RefreshCw } from 'lucide-react';
 import { ControlButton, RecordButton } from '../ui';
