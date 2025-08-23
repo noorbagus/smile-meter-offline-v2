@@ -365,7 +365,7 @@ const CameraApp: React.FC = () => {
       />
 
       {/* Push2Web Login Button (Development only) */}
-      {import.meta.env.DEV && isReady && (
+      {isReady && (
         <div className="absolute top-20 right-4 z-40">
           <button
             onClick={handleShowLogin}
