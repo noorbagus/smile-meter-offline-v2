@@ -1,4 +1,4 @@
-// src/App.tsx - Removed isFlipped logic
+// src/App.tsx - Hidden UI version
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -10,8 +10,6 @@ import {
   LoadingScreen,
   ErrorScreen,
   CameraFeed,
-  CameraControls,
-  RecordingControls,
   VideoPreview,
   SettingsPanel,
   RenderingModal
@@ -19,6 +17,7 @@ import {
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 
 const CameraApp: React.FC = () => {
+  const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [appReady, setAppReady] = useState<boolean>(false);
 
@@ -316,33 +315,52 @@ const CameraApp: React.FC = () => {
     );
   }
 
+  // KEY CHANGE: Show settings with keyboard shortcut (Cmd/Ctrl + D)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+        e.preventDefault();
+        setShowSettings(!showSettings);
+        addLog(`🔧 Settings ${!showSettings ? 'opened' : 'closed'} via keyboard`);
+      }
+      
+      // Space to toggle recording
+      if (e.code === 'Space' && isReady) {
+        e.preventDefault();
+        handleToggleRecording();
+      }
+      
+      // C to switch camera
+      if (e.key === 'c' && isReady) {
+        e.preventDefault();
+        handleSwitchCamera();
+      }
+      
+      // R to reload lens
+      if (e.key === 'r' && isReady) {
+        e.preventDefault();
+        handleReloadEffect();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showSettings, isReady, handleToggleRecording, handleSwitchCamera, handleReloadEffect, addLog]);
+
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
-      {/* Camera Feed - NO isFlipped prop */}
+      {/* Camera Feed - FULL SCREEN, NO UI */}
       <CameraFeed
         cameraFeedRef={cameraFeedRef}
         cameraState={cameraState}
         recordingState={recordingState}
-        isFlipped={false} // Always false - Camera Kit handles orientation
+        isFlipped={isFlipped}
       />
 
-      {/* Camera Controls - NO onFlip handler */}
-      <CameraControls
-        onSettings={() => setShowSettings(true)}
-        onFlip={() => {}} // Empty function - flip disabled
-      />
+      {/* HIDDEN UI - Only accessible via keyboard shortcuts */}
+      {/* Press Cmd/Ctrl+D for settings, Space to record, C to switch camera, R to reload lens */}
 
-      <RecordingControls
-        recordingState={recordingState}
-        recordingTime={recordingTime}
-        onToggleRecording={handleToggleRecording}
-        onGallery={handleReloadEffect}
-        onSwitchCamera={handleSwitchCamera}
-        formatTime={formatTime}
-        disabled={!isReady}
-      />
-
-      {/* Essential modals */}
+      {/* Essential modals only */}
       {cameraState === 'initializing' && (
         <LoadingScreen 
           message="Initializing Web AR Netramaya..."
@@ -370,8 +388,8 @@ const CameraApp: React.FC = () => {
         debugLogs={debugLogs}
         onExportLogs={exportLogs}
         currentStream={getStream()}
-        canvas={getCanvas()}
-        containerRef={cameraFeedRef}
+        canvas={getCanvas()}                
+        containerRef={cameraFeedRef}        
       />
 
       <RenderingModal
@@ -386,6 +404,13 @@ const CameraApp: React.FC = () => {
           setTimeout(() => restoreCameraFeed(), 100);
         }}
       />
+
+      {/* Hidden keyboard shortcuts info - only shows in dev mode */}
+      {import.meta.env.MODE === 'development' && (
+        <div className="fixed bottom-2 left-2 text-white/30 text-xs font-mono">
+          Cmd+D: Settings | Space: Record | C: Camera | R: Reload
+        </div>
+      )}
     </div>
   );
 };
