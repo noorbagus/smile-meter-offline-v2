@@ -10,3 +10,6 @@ export * from './video';
 
 // Settings Components
 export * from './settings';
+
+// Login Components
+export { LoginKit } from './LoginKit';
