@@ -1,135 +1,119 @@
-// src/components/LoginKit.tsx
-import React, { useEffect, useRef } from 'react';
+// src/components/LoginKit.tsx - Direct OAuth without SDK
+import React, { useEffect, useState } from 'react';
 
 interface LoginKitProps {
   onLogin: (accessToken: string) => void;
-  onError?: (error: string) => void;
 }
 
-declare global {
-  interface Window {
-    snapKitInit?: () => void;
-    snap?: {
-      loginkit: {
-        mountButton: (elementId: string, config: any) => void;
-        fetchUserInfo: () => Promise<any>;
-      };
-    };
-  }
-}
+export const LoginKit: React.FC<LoginKitProps> = ({ onLogin }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError }) => {
-  const isInitialized = useRef(false);
-  const buttonId = 'snapchat-login-button';
-
+  // Check for OAuth callback on component mount
   useEffect(() => {
-    if (isInitialized.current) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const error = urlParams.get('error');
+    const state = urlParams.get('state');
 
-    const initializeSnapKit = () => {
-      // Check if script already loaded
-      if (window.snap?.loginkit) {
-        mountLoginButton();
-        return;
-      }
+    if (error) {
+      setError(`OAuth error: ${error}`);
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
 
-      // Load Snap Kit SDK
-      const script = document.createElement('script');
-      script.src = 'https://sdk.snapkit.com/js/v1/login.js';
-      script.id = 'snapkit-sdk';
-      script.async = true;
+    if (code && state) {
+      console.log('OAuth callback received:', { code, state });
+      // In a real implementation, you'd exchange code for access token
+      // For Push2Web testing, you might need a backend endpoint
+      setError('Code received but token exchange not implemented');
+      
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [onLogin]);
 
-      script.onload = () => {
-        console.log('📱 Snap Kit SDK loaded');
-        if (window.snapKitInit) {
-          window.snapKitInit();
-        }
-      };
+  const handleLogin = () => {
+    setIsLoading(true);
+    setError(null);
 
-      script.onerror = () => {
-        console.error('❌ Failed to load Snap Kit SDK');
-        onError?.('Failed to load Snapchat SDK');
-      };
+    const clientId = import.meta.env.VITE_SNAPCHAT_CLIENT_ID;
+    const redirectUri = import.meta.env.VITE_SNAPCHAT_REDIRECT_URI;
 
-      // Don't add duplicate scripts
-      if (!document.getElementById('snapkit-sdk')) {
-        document.head.appendChild(script);
-      }
-    };
+    if (!clientId || !redirectUri) {
+      setError('Missing Snapchat configuration');
+      setIsLoading(false);
+      return;
+    }
 
-    const mountLoginButton = () => {
-      if (!window.snap?.loginkit) {
-        console.warn('⚠️ Snap Kit not ready, retrying...');
-        setTimeout(mountLoginButton, 500);
-        return;
-      }
+    // Generate state parameter for security
+    const state = btoa(Math.random().toString()).substring(0, 12);
+    localStorage.setItem('snapchat_oauth_state', state);
 
-      try {
-        window.snap.loginkit.mountButton(buttonId, {
-          clientId: import.meta.env.VITE_SNAPCHAT_CLIENT_ID,
-          redirectURI: import.meta.env.VITE_SNAPCHAT_REDIRECT_URI,
-          scopeList: [
-            'user.display_name',
-            'user.bitmoji.avatar'
-          ],
-          handleResponseCallback: async () => {
-            try {
-              console.log('📱 Snapchat login callback triggered');
-              
-              const result = await window.snap!.loginkit.fetchUserInfo();
-              console.log('✅ User info fetched:', result.data.me.displayName);
-              
-              // Extract access token from result
-              const accessToken = result.data.me.externalId || 'mock-token-for-development';
-              
-              onLogin(accessToken);
-            } catch (error) {
-              console.error('❌ Login callback error:', error);
-              onError?.(`Login failed: ${error}`);
-            }
-          }
-        });
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'https://auth.snapchat.com/oauth2/api/user.display_name',
+      state: state
+    });
 
-        console.log('✅ Snapchat login button mounted');
-        isInitialized.current = true;
-      } catch (error) {
-        console.error('❌ Failed to mount login button:', error);
-        onError?.(`Button mount failed: ${error}`);
-      }
-    };
+    const authUrl = `https://accounts.snapchat.com/accounts/oauth2/auth?${params}`;
+    
+    // Redirect to Snapchat OAuth
+    window.location.href = authUrl;
+  };
 
-    // Set global callback
-    window.snapKitInit = () => {
-      console.log('🎉 Snap Kit initialized');
-      mountLoginButton();
-    };
-
-    initializeSnapKit();
-
-    // Cleanup
-    return () => {
-      const script = document.getElementById('snapkit-sdk');
-      if (script) {
-        script.remove();
-      }
-      delete window.snapKitInit;
-    };
-  }, [onLogin, onError]);
+  // For development: Mock login with fake token
+  const handleMockLogin = () => {
+    const mockToken = `mock_token_${Date.now()}`;
+    console.log('Using mock token for development:', mockToken);
+    onLogin(mockToken);
+  };
 
   return (
-    <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
-      <div className="text-white text-sm mb-3 text-center">
-        <div className="text-lg mb-1">👨‍💻</div>
-        <div className="font-medium">Developer Mode</div>
-        <div className="text-xs text-white/60">Login for Push2Web</div>
-      </div>
-      
-      <div
-        id={buttonId}
-        className="flex items-center justify-center min-h-[40px]"
-      />
-      
-      <div className="text-xs text-white/50 mt-2 text-center">
-        Connect with Lens Studio
+    <div className="space-y-3">
+      {/* Main login button */}
+      <button
+        onClick={handleLogin}
+        disabled={isLoading}
+        className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold rounded-lg transition-colors disabled:opacity-50"
+      >
+        {isLoading ? (
+          <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <>
+            <span>👻</span>
+            <span>Login with Snapchat</span>
+          </>
+        )}
+      </button>
+
+      {/* Development mock button */}
+      {import.meta.env.DEV && (
+        <button
+          onClick={handleMockLogin}
+          className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors"
+        >
+          🧪 Mock Login (Dev Only)
+        </button>
+      )}
+
+      {/* Error display */}
+      {error && (
+        <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+          <div className="text-red-300 text-sm font-medium">Login Error</div>
+          <div className="text-red-400 text-xs mt-1">{error}</div>
+        </div>
+      )}
+
+      {/* Instructions */}
+      <div className="text-xs text-white/60 space-y-1">
+        <p><strong>Note:</strong> OAuth flow requires backend token exchange</p>
+        <p>• Click login → Authorize on Snapchat</p>
+        <p>• Returns auth code (needs server conversion)</p>
+        <p>• Use mock login for development testing</p>
       </div>
     </div>
   );
