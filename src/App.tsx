@@ -357,8 +357,9 @@ const CameraApp: React.FC = () => {
         isFlipped={isFlipped}
       />
 
-      {/* HIDDEN UI - Only accessible via keyboard shortcuts */}
-      {/* Press Cmd/Ctrl+D for settings, Space to record, C to switch camera, R to reload lens */}
+      {/* UI CONTROLS HIDDEN - Only camera feed visible */}
+      {/* All 4 buttons (Settings, Flip, Record, Switch Camera, Reload) are hidden */}
+      {/* Camera feed takes full screen */}
 
       {/* Essential modals only */}
       {cameraState === 'initializing' && (
