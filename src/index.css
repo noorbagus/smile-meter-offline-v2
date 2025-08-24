@@ -3,19 +3,188 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Base responsive setup */
 * {
   box-sizing: border-box;
+}
+
+html {
+  /* Responsive font size - matches device capabilities */
+  font-size: clamp(14px, 4vw, 18px);
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   overflow: hidden;
+  line-height: 1.4;
+  background: #000;
+  touch-action: manipulation;
 }
 
 #root {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+/* Custom responsive utilities */
+@layer utilities {
+  /* Consistent spacing system */
+  .spacing-xs { @apply p-[2vw] sm:p-[1.5vw] lg:p-[1vw]; }
+  .spacing-sm { @apply p-[3vw] sm:p-[2.5vw] lg:p-[1.5vw]; }
+  .spacing-md { @apply p-[4vw] sm:p-[3vw] lg:p-[2vw]; }
+  .spacing-lg { @apply p-[6vw] sm:p-[4vw] lg:p-[3vw]; }
+  
+  /* Responsive text sizes - consistent scaling */
+  .text-responsive-xs { font-size: clamp(10px, 2.5vw, 12px); }
+  .text-responsive-sm { font-size: clamp(12px, 3vw, 14px); }
+  .text-responsive-base { font-size: clamp(14px, 3.5vw, 16px); }
+  .text-responsive-lg { font-size: clamp(16px, 4vw, 20px); }
+  .text-responsive-xl { font-size: clamp(20px, 5vw, 24px); }
+  .text-responsive-2xl { font-size: clamp(24px, 6vw, 32px); }
+  
+  /* Responsive button sizes */
+  .btn-responsive-sm { 
+    @apply h-[8vh] w-[8vh] min-h-[40px] min-w-[40px] max-h-[48px] max-w-[48px];
+  }
+  .btn-responsive-md { 
+    @apply h-[10vh] w-[10vh] min-h-[48px] min-w-[48px] max-h-[64px] max-w-[64px];
+  }
+  .btn-responsive-lg { 
+    @apply h-[12vh] w-[12vh] min-h-[64px] min-w-[64px] max-h-[80px] max-w-[80px];
+  }
+  
+  /* Record button special sizing */
+  .record-btn { 
+    @apply h-[15vh] w-[15vh] min-h-[80px] min-w-[80px] max-h-[96px] max-w-[96px];
+  }
+  
+  /* Icon sizes responsive */
+  .icon-responsive-xs { @apply w-[2vh] h-[2vh] min-w-[12px] min-h-[12px] max-w-[16px] max-h-[16px]; }
+  .icon-responsive-sm { @apply w-[2.5vh] h-[2.5vh] min-w-[16px] min-h-[16px] max-w-[20px] max-h-[20px]; }
+  .icon-responsive-md { @apply w-[3vh] h-[3vh] min-w-[20px] min-h-[20px] max-w-[24px] max-h-[24px]; }
+  .icon-responsive-lg { @apply w-[4vh] h-[4vh] min-w-[24px] min-h-[24px] max-w-[32px] max-h-[32px]; }
+  
+  /* Loading spinner sizes */
+  .spinner-responsive { @apply w-[8vh] h-[8vh] min-w-[48px] min-h-[48px] max-w-[64px] max-h-[64px]; }
+  
+  /* Attribution positioning - matches Lens Studio */
+  .attribution-bottom {
+    @apply absolute bottom-[2vh] left-1/2 transform -translate-x-1/2;
+  }
+  
+  /* Modal responsive sizing */
+  .modal-responsive {
+    @apply max-w-[90vw] max-h-[90vh] w-full;
+    width: min(400px, 90vw);
+  }
+  
+  /* Panel responsive sizing */
+  .panel-responsive {
+    @apply max-w-[85vw] max-h-[85vh];
+    width: min(360px, 85vw);
+  }
+}
+
+/* Custom components */
+@layer components {
+  /* Glassmorphism effects */
+  .glass-light {
+    @apply backdrop-blur-md bg-white/20 border border-white/30;
+  }
+  
+  .glass-dark {
+    @apply backdrop-blur-md bg-black/40 border border-white/20;
+  }
+  
+  /* Gradient overlays */
+  .gradient-top {
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%);
+  }
+  
+  .gradient-bottom {
+    background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%);
+  }
+  
+  /* Button states */
+  .btn-active {
+    @apply scale-95 bg-white/30;
+  }
+  
+  .btn-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+}
+
+/* Device-specific optimizations */
+@media (max-width: 480px) {
+  /* Small phones */
+  .spacing-md { @apply p-[5vw]; }
+  .btn-responsive-lg { @apply h-[14vh] w-[14vh]; }
+}
+
+@media (min-width: 768px) {
+  /* Tablets */
+  html { font-size: clamp(16px, 2vw, 20px); }
+  .attribution-bottom { @apply bottom-[3vh]; }
+}
+
+@media (min-width: 1024px) {
+  /* Desktop */
+  html { font-size: 18px; }
+  .modal-responsive { width: 420px; }
+  .panel-responsive { width: 380px; }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Landscape phones */
+  .btn-responsive-lg { @apply h-[20vh] w-[20vh]; }
+  .record-btn { @apply h-[25vh] w-[25vh]; }
+  .attribution-bottom { @apply bottom-[5vh]; }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  * {
+    -webkit-font-smoothing: subpixel-antialiased;
+  }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus visibility for accessibility */
+button:focus-visible,
+[role="button"]:focus-visible {
+  @apply outline-2 outline-blue-400 outline-offset-2;
+}
+
+/* Touch-friendly tap targets */
+button,
+[role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Prevent text selection on UI elements */
+button,
+.glass-light,
+.glass-dark {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }

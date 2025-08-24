@@ -1,4 +1,4 @@
-// src/components/camera/CameraFeed.tsx - Fixed AR orientation
+// src/components/camera/CameraFeed.tsx - Responsive AR container
 import React from 'react';
 import type { CameraState, RecordingState } from '../../hooks';
 
@@ -14,10 +14,10 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
 }) => {
   return (
     <div className="flex-1 relative overflow-hidden bg-black">
-      {/* Background gradient fallback */}
+      {/* Fallback gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900" />
       
-      {/* Camera Kit container - NO CSS transforms */}
+      {/* Camera Kit container - responsive */}
       <div 
         ref={cameraFeedRef}
         className="absolute inset-0 flex items-center justify-center"
@@ -26,11 +26,10 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
           height: '100%',
           overflow: 'hidden',
           background: '#000',
-          // REMOVED: CSS transforms that cause flipping
-          // transform: isFlipped ? 'scaleX(-1)' : 'none'
+          touchAction: 'manipulation'
         }}
       >
-        {/* Camera Kit canvas will be injected here */}
+        {/* Canvas injected here by Camera Kit */}
       </div>
     </div>
   );
