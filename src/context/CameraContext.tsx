@@ -1,5 +1,5 @@
 // src/context/CameraContext.tsx - Push2Web integration
-import React, { createContext, useContext, useRef } from 'react';
+import React, { createContext, useContext, useRef, useState } from 'react';
 import { useCameraKit, useCameraPermissions, useDebugLogger } from '../hooks';
 import type { CameraState, PermissionState, ErrorInfo } from '../hooks';
 
@@ -36,12 +36,25 @@ interface CameraContextValue {
   
   // Push2Web Functions
   subscribePush2Web: (accessToken: string) => Promise<boolean>;
+  unsubscribePush2Web: () => void;
   getPush2WebStatus: () => {
     available: boolean;
     subscribed: boolean;
     session: boolean;
     repository: boolean;
+    lastLens: any;
+    hasToken: boolean;
   };
+  
+  // Push2Web State
+  isSubscribed: boolean;
+  lastReceivedLens: any;
+  
+  // Login Kit State
+  isLoggedIn: boolean;
+  snapchatUser: any;
+  accessToken: string | null;
+  setLoginState: (loggedIn: boolean, user: any, token: string | null) => void;
   
   // Refs
   cameraFeedRef: React.RefObject<HTMLDivElement>;
@@ -63,6 +76,11 @@ interface CameraProviderProps {
 
 export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
   const cameraFeedRef = useRef<HTMLDivElement>(null);
+  
+  // Login Kit state
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [snapchatUser, setSnapchatUser] = useState<any>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   
   const { debugLogs, addLog, clearLogs, exportLogs } = useDebugLogger();
   
@@ -91,8 +109,72 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     isReady,
     isInitializing,
     subscribePush2Web,
-    getPush2WebStatus
+    unsubscribePush2Web,
+    getPush2WebStatus,
+    isSubscribed,
+    lastReceivedLens
   } = useCameraKit(addLog);
+
+  // Handle login state changes
+  const setLoginState = (loggedIn: boolean, user: any, token: string | null) => {
+    setIsLoggedIn(loggedIn);
+    setSnapchatUser(user);
+    setAccessToken(token);
+    
+    if (loggedIn && token) {
+      addLog(`✅ Login state updated: ${user?.displayName || 'Unknown'}`);
+      
+      // Auto-subscribe to Push2Web if Camera Kit is ready
+      if (isReady) {
+        addLog('🔄 Auto-subscribing to Push2Web...');
+        setTimeout(() => {
+          subscribePush2Web(token).then((success) => {
+            if (success) {
+              addLog('🎉 Auto-subscription successful');
+            } else {
+              addLog('❌ Auto-subscription failed');
+            }
+          });
+        }, 500);
+      } else {
+        addLog('⏳ Camera Kit not ready - will auto-subscribe when ready');
+      }
+    } else {
+      addLog('👋 Login state cleared');
+      // Unsubscribe from Push2Web
+      if (isSubscribed) {
+        unsubscribePush2Web();
+      }
+    }
+  };
+
+  // Enhanced subscribePush2Web that updates login state
+  const enhancedSubscribePush2Web = async (token: string): Promise<boolean> => {
+    try {
+      const success = await subscribePush2Web(token);
+      if (success) {
+        // Update access token if subscription successful
+        setAccessToken(token);
+      }
+      return success;
+    } catch (error) {
+      addLog(`❌ Enhanced subscription failed: ${error}`);
+      return false;
+    }
+  };
+
+  // Enhanced cleanup that handles login state
+  const enhancedCleanup = () => {
+    // Clear login state
+    setIsLoggedIn(false);
+    setSnapchatUser(null);
+    setAccessToken(null);
+    
+    // Original cleanup
+    cleanup();
+    
+    addLog('🧹 Enhanced cleanup completed');
+  };
 
   const value: CameraContextValue = {
     // Camera Kit
@@ -103,7 +185,7 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     reloadLens,
     pauseSession,
     resumeSession,
-    cleanup,
+    cleanup: enhancedCleanup,
     getCanvas,
     getStream,
     restoreCameraFeed,
@@ -126,8 +208,19 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     exportLogs,
     
     // Push2Web Functions
-    subscribePush2Web,
+    subscribePush2Web: enhancedSubscribePush2Web,
+    unsubscribePush2Web,
     getPush2WebStatus,
+    
+    // Push2Web State
+    isSubscribed,
+    lastReceivedLens,
+    
+    // Login Kit State
+    isLoggedIn,
+    snapchatUser,
+    accessToken,
+    setLoginState,
     
     // Refs
     cameraFeedRef

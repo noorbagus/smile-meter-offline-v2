@@ -1,4 +1,4 @@
-// src/App.tsx - Fullscreen implementation with floating buttons
+// src/App.tsx - Push2Web Login Integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -16,7 +16,7 @@ import {
   SettingsPanel,
   RenderingModal
 } from './components';
-// import { LoginKit } from './components/LoginKit';
+import { LoginKit } from './components/LoginKit';
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 import { Maximize, X } from 'lucide-react';
 
@@ -51,7 +51,16 @@ const CameraApp: React.FC = () => {
     exportLogs,
     isReady,
     restoreCameraFeed,
-    subscribePush2Web
+    
+    // Push2Web & Login
+    isLoggedIn,
+    snapchatUser,
+    accessToken,
+    setLoginState,
+    subscribePush2Web,
+    getPush2WebStatus,
+    isSubscribed,
+    lastReceivedLens
   } = useCameraContext();
 
   const {
@@ -294,6 +303,16 @@ const CameraApp: React.FC = () => {
     };
   }, [cameraState, addLog, restoreCameraFeed]);
 
+  // Login Kit handlers
+  const handleLogin = useCallback((accessToken: string) => {
+    addLog('🎉 Snapchat login successful!');
+    // LoginKit will handle user info fetching and call setLoginState
+  }, [addLog]);
+
+  const handleLoginError = useCallback((error: string) => {
+    addLog(`❌ Login error: ${error}`);
+  }, [addLog]);
+
   const initializeApp = useCallback(async () => {
     if (cameraState === 'ready') {
       addLog('📱 Camera already ready');
@@ -320,11 +339,25 @@ const CameraApp: React.FC = () => {
       const success = await initializeCameraKit(stream, cameraFeedRef);
       if (success) {
         addLog('🎉 App initialization complete');
+        
+        // Auto-subscribe to Push2Web if logged in
+        if (isLoggedIn && accessToken) {
+          addLog('🔄 Camera ready - subscribing to Push2Web...');
+          setTimeout(() => {
+            subscribePush2Web(accessToken).then((success) => {
+              if (success) {
+                addLog('🎉 Push2Web auto-subscribed after Camera Kit ready');
+              } else {
+                addLog('❌ Push2Web auto-subscription failed');
+              }
+            });
+          }, 1000);
+        }
       }
     } catch (error) {
       addLog(`❌ Initialization failed: ${error}`);
     }
-  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef]);
+  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, isLoggedIn, accessToken, subscribePush2Web]);
 
   const handleSwitchCamera = useCallback(async () => {
     if (!isReady) return;
@@ -451,6 +484,9 @@ const CameraApp: React.FC = () => {
     retryRedirect();
   }, [addLog]);
 
+  // Push2Web status for debugging
+  const push2webStatus = getPush2WebStatus();
+
   // Show loading while checking/redirecting
   if (!appReady) {
     const isInInstagram = isInstagramBrowser();
@@ -478,6 +514,38 @@ const CameraApp: React.FC = () => {
             subMessage="Checking browser compatibility..."
           />
         )}
+      </div>
+    );
+  }
+
+  // Show Login Kit if not logged in
+  if (!isLoggedIn) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="max-w-md w-full mx-auto p-6">
+          <div className="text-center mb-8">
+            <div className="text-6xl mb-4">🎭</div>
+            <h1 className="text-2xl font-bold text-white mb-2">Web AR Netramaya</h1>
+            <p className="text-white/70 text-sm">Push2Web requires Snapchat login</p>
+          </div>
+          
+          <LoginKit 
+            onLogin={(token) => {
+              handleLogin(token);
+              // LoginKit will call setLoginState internally
+            }}
+            onError={handleLoginError}
+            addLog={addLog}
+          />
+          
+          {/* Push2Web Status Debug */}
+          <div className="mt-6 text-xs text-white/50 bg-black/20 rounded-lg p-3">
+            <div>🔧 Push2Web Debug:</div>
+            <div>Available: {push2webStatus.available ? '✅' : '❌'}</div>
+            <div>Session: {push2webStatus.session ? '✅' : '❌'}</div>
+            <div>Repository: {push2webStatus.repository ? '✅' : '❌'}</div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -543,6 +611,22 @@ const CameraApp: React.FC = () => {
         formatTime={formatTime}
         disabled={!isReady}
       />
+
+      {/* Push2Web Status Indicator */}
+      {isLoggedIn && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
+          <div className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-300 ${
+            isSubscribed 
+              ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
+              : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+          } ${isFullscreen ? 'opacity-30' : 'opacity-80'}`}>
+            {isSubscribed ? '🔗 Push2Web Ready' : '🔄 Connecting...'}
+            {lastReceivedLens && (
+              <span className="ml-2">• {lastReceivedLens.name}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Entry Button - Show only when NOT in fullscreen */}
       {!isFullscreen && isReady && (
