@@ -1,4 +1,4 @@
-// src/components/camera/RecordingControls.tsx - Ensure no touch blocking
+// src/components/camera/RecordingControls.tsx - All buttons hidden
 import React from 'react';
 import { SwitchCamera, RefreshCw } from 'lucide-react';
 import { ControlButton, RecordButton } from '../ui';
@@ -24,7 +24,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   disabled = false
 }) => {
   return (
-    <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-10">
+    <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-10" style={{ display: 'none' }}>
       <div className="flex items-center justify-between">
         <ControlButton 
           icon={SwitchCamera} 
