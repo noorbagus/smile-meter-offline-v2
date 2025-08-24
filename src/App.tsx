@@ -103,6 +103,15 @@ const CameraApp: React.FC = () => {
     }
   }, [addLog, subscribePush2Web]);
 
+  // Handle logout
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('snap_access_token');
+    setAccessToken(null);
+    setIsLoggedIn(false);
+    setShowLogin(true);
+    addLog('👋 Logged out - token cleared');
+  }, [addLog]);
+
   // Handle Login error
   const handleLoginError = useCallback((error: string) => {
     addLog(`❌ Login error: ${error}`);
@@ -294,8 +303,22 @@ const CameraApp: React.FC = () => {
 
   // Initialize app when ready
   const initializeApp = useCallback(async () => {
+    addLog(`🔍 Current camera state: ${cameraState}`);
+    
     if (cameraState === 'ready') {
-      addLog('📱 Camera already ready');
+      addLog('📱 Camera ready - checking canvas attachment');
+      // Force canvas re-attachment if needed
+      const canvas = getCanvas();
+      if (canvas && cameraFeedRef.current) {
+        addLog('🔄 Re-attaching canvas to container');
+        // Force re-render canvas
+        setTimeout(() => {
+          if (canvas && cameraFeedRef.current) {
+            canvas.style.display = 'block';
+            canvas.style.visibility = 'visible';
+          }
+        }, 100);
+      }
       return;
     }
 
@@ -303,10 +326,17 @@ const CameraApp: React.FC = () => {
       addLog('🎬 Starting app initialization...');
       
       const hasPermission = await checkCameraPermission();
-      if (!hasPermission) return;
+      if (!hasPermission) {
+        addLog('❌ Camera permission check failed');
+        return;
+      }
 
+      addLog('🎥 Requesting camera stream...');
       const stream = await requestCameraStream(currentFacingMode, true);
-      if (!stream) return;
+      if (!stream) {
+        addLog('❌ Failed to get camera stream');
+        return;
+      }
 
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
@@ -316,20 +346,23 @@ const CameraApp: React.FC = () => {
         addLog('🔇 WARNING: No audio tracks in camera stream - recordings will be silent!');
       }
 
+      addLog('🎭 Initializing Camera Kit...');
       const success = await initializeCameraKit(stream, cameraFeedRef);
       if (success) {
         addLog('🎉 App initialization complete');
         
-        // Show Push2Web login after camera is ready
+        // Show Push2Web login after camera is ready (only if not logged in)
         if (!isLoggedIn && !showLogin) {
           setShowLogin(true);
           addLog('🔒 Camera ready - showing Snapchat login for Push2Web');
         }
+      } else {
+        addLog('❌ Camera Kit initialization failed');
       }
     } catch (error) {
       addLog(`❌ Initialization failed: ${error}`);
     }
-  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, isLoggedIn, showLogin]);
+  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, isLoggedIn, showLogin, getCanvas]);
 
   useEffect(() => {
     if (appReady) {
@@ -510,14 +543,21 @@ const CameraApp: React.FC = () => {
         disabled={!isReady}
       />
 
-      {/* Push2Web Status Indicator */}
+      {/* Push2Web Status Indicator with Logout */}
       {isLoggedIn && (
         <div className="absolute top-16 left-4 z-20">
-          <div className="bg-green-500/20 backdrop-blur-sm border border-green-500/30 rounded-lg px-3 py-1">
+          <div className="bg-green-500/20 backdrop-blur-sm border border-green-500/30 rounded-lg px-3 py-1 flex items-center space-x-2">
             <div className="text-green-300 text-xs font-medium flex items-center space-x-1">
               <span>🎭</span>
               <span>Push2Web Ready</span>
             </div>
+            <button
+              onClick={handleLogout}
+              className="text-red-300 hover:text-red-200 text-xs ml-2"
+              title="Logout"
+            >
+              ↗
+            </button>
           </div>
         </div>
       )}

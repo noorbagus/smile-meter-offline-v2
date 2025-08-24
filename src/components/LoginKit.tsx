@@ -12,13 +12,23 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Listen for OAuth via BroadcastChannel
+  // Check saved token and listen for OAuth via BroadcastChannel
   useEffect(() => {
+    // Check for saved token on mount
+    const savedToken = localStorage.getItem('snap_access_token');
+    if (savedToken) {
+      addLog?.('🔄 Using saved token from previous login');
+      onLogin(savedToken);
+      return;
+    }
+
     const channel = new BroadcastChannel('snapchat_oauth');
     
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'oauth_success') {
         addLog?.(`✅ OAuth token received: ${event.data.token.substring(0, 20)}...`);
+        // Save token for persistence
+        localStorage.setItem('snap_access_token', event.data.token);
         onLogin(event.data.token);
       } else if (event.data.type === 'oauth_error') {
         addLog?.(`❌ OAuth error: ${event.data.error}`);
