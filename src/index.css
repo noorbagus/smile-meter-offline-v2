@@ -9,182 +9,229 @@
 }
 
 html {
-  /* Responsive font size - matches device capabilities */
+  /* Responsive font scaling */
   font-size: clamp(14px, 4vw, 18px);
   -webkit-text-size-adjust: 100%;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  
+  /* iOS Safari viewport fix */
+  height: -webkit-fill-available;
+  height: 100%;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   overflow: hidden;
   line-height: 1.4;
-  background: #000;
-  touch-action: manipulation;
+  
+  /* Chrome mobile viewport fix */
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  
+  /* Prevent zoom on input focus (mobile) */
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   width: 100vw;
   height: 100vh;
+  height: -webkit-fill-available; /* iOS Safari fix */
   overflow: hidden;
   position: fixed;
   top: 0;
   left: 0;
 }
 
+/* Chrome mobile specific fixes */
+@supports (-webkit-touch-callout: none) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+  }
+  
+  body {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Fix for Chrome mobile address bar */
+  #root {
+    height: calc(100vh - env(safe-area-inset-bottom));
+    height: -webkit-fill-available;
+  }
+}
+
+/* Safari specific fixes */
+@supports (-webkit-appearance: none) and (not (-moz-appearance: none)) {
+  body {
+    /* Safari viewport units fix */
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
+  
+  #root {
+    height: 100vh;
+    height: -webkit-fill-available;
+  }
+}
+
 /* Custom responsive utilities */
 @layer utilities {
-  /* Consistent spacing system */
+  /* Consistent spacing - viewport based */
   .spacing-xs { @apply p-[2vw] sm:p-[1.5vw] lg:p-[1vw]; }
   .spacing-sm { @apply p-[3vw] sm:p-[2.5vw] lg:p-[1.5vw]; }
   .spacing-md { @apply p-[4vw] sm:p-[3vw] lg:p-[2vw]; }
   .spacing-lg { @apply p-[6vw] sm:p-[4vw] lg:p-[3vw]; }
   
-  /* Responsive text sizes - consistent scaling */
-  .text-responsive-xs { font-size: clamp(10px, 2.5vw, 12px); }
-  .text-responsive-sm { font-size: clamp(12px, 3vw, 14px); }
-  .text-responsive-base { font-size: clamp(14px, 3.5vw, 16px); }
-  .text-responsive-lg { font-size: clamp(16px, 4vw, 20px); }
-  .text-responsive-xl { font-size: clamp(20px, 5vw, 24px); }
-  .text-responsive-2xl { font-size: clamp(24px, 6vw, 32px); }
+  /* Consistent text sizes - clamp for cross-browser */
+  .text-responsive-xs { 
+    font-size: clamp(10px, 2.5vw, 12px);
+    line-height: 1.3;
+  }
+  .text-responsive-sm { 
+    font-size: clamp(12px, 3vw, 14px);
+    line-height: 1.35;
+  }
+  .text-responsive-base { 
+    font-size: clamp(14px, 3.5vw, 16px);
+    line-height: 1.4;
+  }
+  .text-responsive-lg { 
+    font-size: clamp(16px, 4vw, 20px);
+    line-height: 1.45;
+  }
+  .text-responsive-xl { 
+    font-size: clamp(20px, 5vw, 24px);
+    line-height: 1.5;
+  }
+  .text-responsive-2xl { 
+    font-size: clamp(24px, 6vw, 32px);
+    line-height: 1.2;
+  }
   
-  /* Responsive button sizes */
+  /* Consistent buttons - cross-browser */
   .btn-responsive-sm { 
-    @apply h-[8vh] w-[8vh] min-h-[40px] min-w-[40px] max-h-[48px] max-w-[48px];
+    width: clamp(40px, 8vw, 48px);
+    height: clamp(40px, 8vw, 48px);
+    min-width: 40px;
+    min-height: 40px;
   }
   .btn-responsive-md { 
-    @apply h-[10vh] w-[10vh] min-h-[48px] min-w-[48px] max-h-[64px] max-w-[64px];
+    width: clamp(48px, 10vw, 64px);
+    height: clamp(48px, 10vw, 64px);
+    min-width: 48px;
+    min-height: 48px;
   }
   .btn-responsive-lg { 
-    @apply h-[12vh] w-[12vh] min-h-[64px] min-w-[64px] max-h-[80px] max-w-[80px];
+    width: clamp(64px, 12vw, 80px);
+    height: clamp(64px, 12vw, 80px);
+    min-width: 64px;
+    min-height: 64px;
   }
   
-  /* Record button special sizing */
-  .record-btn { 
-    @apply h-[15vh] w-[15vh] min-h-[80px] min-w-[80px] max-h-[96px] max-w-[96px];
-  }
-  
-  /* Icon sizes responsive */
-  .icon-responsive-xs { @apply w-[2vh] h-[2vh] min-w-[12px] min-h-[12px] max-w-[16px] max-h-[16px]; }
-  .icon-responsive-sm { @apply w-[2.5vh] h-[2.5vh] min-w-[16px] min-h-[16px] max-w-[20px] max-h-[20px]; }
-  .icon-responsive-md { @apply w-[3vh] h-[3vh] min-w-[20px] min-h-[20px] max-w-[24px] max-h-[24px]; }
-  .icon-responsive-lg { @apply w-[4vh] h-[4vh] min-w-[24px] min-h-[24px] max-w-[32px] max-h-[32px]; }
-  
-  /* Loading spinner sizes */
-  .spinner-responsive { @apply w-[8vh] h-[8vh] min-w-[48px] min-h-[48px] max-w-[64px] max-h-[64px]; }
-  
-  /* Attribution positioning - matches Lens Studio */
+  /* Attribution positioning - cross-browser safe */
   .attribution-bottom {
-    @apply absolute bottom-[2vh] left-1/2 transform -translate-x-1/2;
+    position: absolute;
+    bottom: clamp(8px, 2vh, 16px);
+    bottom: calc(clamp(8px, 2vh, 16px) + env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
   }
   
-  /* Modal responsive sizing */
-  .modal-responsive {
-    @apply max-w-[90vw] max-h-[90vh] w-full;
-    width: min(400px, 90vw);
-  }
-  
-  /* Panel responsive sizing */
-  .panel-responsive {
-    @apply max-w-[85vw] max-h-[85vh];
-    width: min(360px, 85vw);
+  /* Chrome mobile safe positioning */
+  @supports (-webkit-touch-callout: none) {
+    .attribution-bottom {
+      bottom: max(2vh, 8px);
+      bottom: calc(max(2vh, 8px) + env(safe-area-inset-bottom));
+    }
   }
 }
 
-/* Custom components */
-@layer components {
-  /* Glassmorphism effects */
-  .glass-light {
-    @apply backdrop-blur-md bg-white/20 border border-white/30;
-  }
-  
-  .glass-dark {
-    @apply backdrop-blur-md bg-black/40 border border-white/20;
-  }
-  
-  /* Gradient overlays */
-  .gradient-top {
-    background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%);
-  }
-  
-  .gradient-bottom {
-    background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%);
-  }
-  
-  /* Button states */
-  .btn-active {
-    @apply scale-95 bg-white/30;
-  }
-  
-  .btn-disabled {
-    @apply opacity-50 cursor-not-allowed;
-  }
-}
-
-/* Device-specific optimizations */
+/* Mobile-first responsive breakpoints */
 @media (max-width: 480px) {
-  /* Small phones */
-  .spacing-md { @apply p-[5vw]; }
-  .btn-responsive-lg { @apply h-[14vh] w-[14vh]; }
+  html {
+    font-size: clamp(12px, 4.5vw, 16px);
+  }
+  
+  .btn-responsive-sm { 
+    width: clamp(36px, 9vw, 44px);
+    height: clamp(36px, 9vw, 44px);
+  }
+  .btn-responsive-md { 
+    width: clamp(44px, 11vw, 56px);
+    height: clamp(44px, 11vw, 56px);
+  }
+  .btn-responsive-lg { 
+    width: clamp(56px, 13vw, 72px);
+    height: clamp(56px, 13vw, 72px);
+  }
 }
 
 @media (min-width: 768px) {
-  /* Tablets */
-  html { font-size: clamp(16px, 2vw, 20px); }
-  .attribution-bottom { @apply bottom-[3vh]; }
+  html {
+    font-size: clamp(16px, 2.5vw, 20px);
+  }
 }
 
 @media (min-width: 1024px) {
-  /* Desktop */
-  html { font-size: 18px; }
-  .modal-responsive { width: 420px; }
-  .panel-responsive { width: 380px; }
+  html {
+    font-size: 18px; /* Fixed for desktop */
+  }
 }
 
+/* Landscape orientation fixes */
 @media (orientation: landscape) and (max-height: 500px) {
-  /* Landscape phones */
-  .btn-responsive-lg { @apply h-[20vh] w-[20vh]; }
-  .record-btn { @apply h-[25vh] w-[25vh]; }
-  .attribution-bottom { @apply bottom-[5vh]; }
+  .attribution-bottom {
+    bottom: clamp(4px, 1vh, 8px);
+    bottom: calc(clamp(4px, 1vh, 8px) + env(safe-area-inset-bottom));
+  }
+  
+  .text-responsive-sm { font-size: clamp(11px, 2.5vw, 13px); }
+  .text-responsive-base { font-size: clamp(13px, 3vw, 15px); }
+  .text-responsive-lg { font-size: clamp(15px, 3.5vw, 18px); }
 }
 
 /* High DPI displays */
 @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-  * {
-    -webkit-font-smoothing: subpixel-antialiased;
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-/* Accessibility improvements */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+/* Touch device optimizations */
+@media (pointer: coarse) {
+  .btn-responsive-sm { min-width: 44px; min-height: 44px; }
+  .btn-responsive-md { min-width: 48px; min-height: 48px; }
+  .btn-responsive-lg { min-width: 56px; min-height: 56px; }
 }
 
-/* Focus visibility for accessibility */
+/* Prevent text selection and zoom on mobile */
+body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Focus states for accessibility */
 button:focus-visible,
 [role="button"]:focus-visible {
-  @apply outline-2 outline-blue-400 outline-offset-2;
+  outline: 2px solid rgba(59, 130, 246, 0.8);
+  outline-offset: 2px;
 }
 
-/* Touch-friendly tap targets */
-button,
-[role="button"] {
-  min-height: 44px;
-  min-width: 44px;
-}
-
-/* Prevent text selection on UI elements */
-button,
-.glass-light,
-.glass-dark {
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
+/* Fix for iOS Safari bottom bar */
+@supports (padding: max(0px)) {
+  #root {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+    height: calc(100vh - max(0px, env(safe-area-inset-bottom)));
+  }
 }
