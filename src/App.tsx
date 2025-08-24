@@ -523,12 +523,13 @@ const CameraApp: React.FC = () => {
           {/* Push2Web Status */}
           {(() => {
             const status = getPush2WebStatus();
+            const pushStatus = push2WebStatus || { connected: false, subscribed: false, error: null };
             return (
               <div className="mt-4 p-3 bg-white/10 rounded-lg text-xs text-white/70">
                 <p><strong>Push2Web Status:</strong></p>
                 <p>Available: {status.available ? '✅' : '❌'}</p>
-                <p>Connected: {push2WebStatus.connected ? '✅' : '❌'}</p>
-                {push2WebStatus.error && <p className="text-red-300">Error: {push2WebStatus.error}</p>}
+                <p>Connected: {pushStatus.connected ? '✅' : '❌'}</p>
+                {pushStatus.error && <p className="text-red-300">Error: {pushStatus.error}</p>}
               </div>
             );
           })()}
