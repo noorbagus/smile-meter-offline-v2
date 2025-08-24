@@ -16,7 +16,7 @@ import {
   SettingsPanel,
   RenderingModal
 } from './components';
-import { LoginKit } from './components/LoginKit';
+// import { LoginKit } from './components/LoginKit';
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 import { Maximize, X } from 'lucide-react';
 
@@ -29,12 +29,8 @@ const CameraApp: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showExitButton, setShowExitButton] = useState<boolean>(false);
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
-  const [tapCount, setTapCount] = useState<number>(0);
   const [exitButtonTimer, setExitButtonTimer] = useState<NodeJS.Timeout | null>(null);
-  
-  // Push2Web login state - HIDDEN UI
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [showLogin, setShowLogin] = useState<boolean>(false);
+  const [tapCount, setTapCount] = useState<number>(0);
 
   const {
     cameraState,
@@ -55,8 +51,7 @@ const CameraApp: React.FC = () => {
     exportLogs,
     isReady,
     restoreCameraFeed,
-    subscribePush2Web,
-    getPush2WebStatus
+    subscribePush2Web
   } = useCameraContext();
 
   const {
@@ -163,15 +158,12 @@ const CameraApp: React.FC = () => {
     
     setTapCount(prev => {
       if (prev === 0) {
-        // First tap
-        setTimeout(() => setTapCount(0), 500); // Reset after 500ms
+        setTimeout(() => setTapCount(0), 500);
         return 1;
       } else if (prev === 1) {
-        // Second tap - show exit button
         setShowExitButton(true);
         addLog('👆 Double tap detected - showing exit button');
         
-        // Auto-hide exit button after 5 seconds
         const hideTimer = setTimeout(() => {
           setShowExitButton(false);
           addLog('⏰ Exit button auto-hidden');
@@ -260,24 +252,6 @@ const CameraApp: React.FC = () => {
       }
     };
   }, [longPressTimer, exitButtonTimer]);
-
-  // Handle Snapchat login - functionality preserved but UI hidden
-  const handleSnapchatLogin = useCallback(async (accessToken: string) => {
-    try {
-      addLog('🔗 Snapchat login successful, subscribing to Push2Web...');
-      const success = await subscribePush2Web(accessToken);
-      
-      if (success) {
-        setIsLoggedIn(true);
-        setShowLogin(false);
-        addLog('✅ Push2Web ready - can receive lenses from Lens Studio');
-      } else {
-        addLog('❌ Push2Web subscription failed');
-      }
-    } catch (error) {
-      addLog(`❌ Login error: ${error}`);
-    }
-  }, [subscribePush2Web, addLog]);
 
   // Instagram redirect check
   useEffect(() => {
@@ -386,7 +360,7 @@ const CameraApp: React.FC = () => {
         addLog('🔇 CRITICAL WARNING: No audio tracks in camera stream!');
         addLog('📱 Recordings will be SILENT - check microphone permissions');
       } else {
-        audioTracks.forEach((track, index) => {
+        audioTracks.forEach((track: any, index: any) => {
           addLog(`🎤 Audio track ${index}: ${track.label || 'Unknown'}, state: ${track.readyState}, enabled: ${track.enabled}`);
           
           if (track.readyState !== 'live') {
@@ -459,7 +433,7 @@ const CameraApp: React.FC = () => {
       if (stream) {
         const audioTracks = stream.getAudioTracks();
         addLog(`✅ Permission granted with ${audioTracks.length} audio tracks`);
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track: any) => track.stop());
         initializeApp();
       }
     } catch (error) {
@@ -552,13 +526,11 @@ const CameraApp: React.FC = () => {
         isFlipped={isFlipped}
       />
 
-      {/* Push2Web Login - COMPLETELY HIDDEN */}
-      {/* All Push2Web UI components removed from rendering */}
-
-      {/* Camera Controls - Already hidden via updated component */}
+      {/* Camera Controls - Hide settings button in fullscreen */}
       <CameraControls
         onSettings={() => setShowSettings(true)}
         onFlip={() => setIsFlipped(!isFlipped)}
+        isFullscreen={isFullscreen}
       />
 
       {/* Recording Controls - Already hidden via updated component */}

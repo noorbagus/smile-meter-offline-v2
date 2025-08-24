@@ -1,6 +1,6 @@
-// src/components/camera/CameraControls.tsx - Fullscreen compatible with hidden controls
+// src/components/camera/CameraControls.tsx - Fullscreen compatible, flip button removed
 import React from 'react';
-import { Settings, FlipHorizontal } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { ControlButton } from '../ui';
 import { detectAndroid } from '../../utils/androidRecorderFix';
 
@@ -36,14 +36,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
             )}
           </div>
           
-          <ControlButton 
-            icon={FlipHorizontal} 
-            onClick={() => {}}
-            label="Flip (disabled)"
-            disabled={true}
-            className="opacity-30"
-            size="sm"
-          />
+          <div className="w-10" /> {/* Spacer instead of flip button */}
         </div>
       </div>
 
