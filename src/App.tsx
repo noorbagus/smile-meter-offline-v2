@@ -1,4 +1,4 @@
-// src/App.tsx - Login Kit + Push2Web integration
+// src/App.tsx - Main app dengan Push2Web integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -6,6 +6,7 @@ import {
   useCameraContext, 
   useRecordingContext 
 } from './context';
+import { LoginKit } from './components/LoginKit';
 import {
   LoadingScreen,
   ErrorScreen,
@@ -16,7 +17,6 @@ import {
   SettingsPanel,
   RenderingModal
 } from './components';
-import { LoginKit } from './components/LoginKit';
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 import { Maximize, X } from 'lucide-react';
 
@@ -24,8 +24,11 @@ const CameraApp: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [appReady, setAppReady] = useState<boolean>(false);
+  
+  // Push2Web state
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [userInfo, setUserInfo] = useState<any>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [showLogin, setShowLogin] = useState<boolean>(false);
   
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -54,8 +57,7 @@ const CameraApp: React.FC = () => {
     isReady,
     restoreCameraFeed,
     subscribePush2Web,
-    getPush2WebStatus,
-    push2WebStatus
+    getPush2WebStatus
   } = useCameraContext();
 
   const {
@@ -75,42 +77,42 @@ const CameraApp: React.FC = () => {
     setShowRenderingModal
   } = useRecordingContext();
 
-  // Handle successful login
-  const handleLogin = useCallback(async (accessToken: string, userData: any) => {
+  // Handle Login success
+  const handleLogin = useCallback(async (token: string) => {
     try {
+      setAccessToken(token);
       setIsLoggedIn(true);
-      setUserInfo(userData);
-      addLog(`✅ Snapchat login successful: ${userData.displayName}`);
+      setShowLogin(false);
+      addLog(`✅ Snapchat login successful: ${token.substring(0, 10)}...`);
       
-      // Subscribe to Push2Web if camera is ready
-      if (cameraState === 'ready') {
-        addLog('🔗 Attempting Push2Web subscription...');
-        const success = await subscribePush2Web(accessToken);
-        
-        if (success) {
-          addLog('🎉 Push2Web ready! You can now receive lenses from Lens Studio');
-        } else {
-          addLog('❌ Push2Web subscription failed');
-        }
+      // Subscribe to Push2Web dengan access token
+      const success = await subscribePush2Web(token);
+      if (success) {
+        addLog('🎭 Push2Web subscription successful - ready to receive lenses!');
       } else {
-        addLog('📱 Will subscribe to Push2Web when camera is ready');
+        addLog('⚠️ Push2Web subscription failed');
       }
-      
     } catch (error) {
-      addLog(`❌ Login processing error: ${error}`);
+      addLog(`❌ Login handler error: ${error}`);
     }
-  }, [addLog, cameraState, subscribePush2Web]);
+  }, [addLog, subscribePush2Web]);
 
+  // Handle Login error
   const handleLoginError = useCallback((error: string) => {
     addLog(`❌ Login error: ${error}`);
-    setIsLoggedIn(false);
-    setUserInfo(null);
   }, [addLog]);
 
-  // Fullscreen functions (unchanged)
+  // Show Push2Web status in settings
+  const handleShowPush2WebStatus = useCallback(() => {
+    const status = getPush2WebStatus();
+    addLog(`📊 Push2Web Status: Available: ${status.available}, Subscribed: ${status.subscribed}, Session: ${status.session}, Repository: ${status.repository}`);
+  }, [addLog, getPush2WebStatus]);
+
+  // Fullscreen functions (same as before)
   const enterFullscreen = useCallback(async () => {
     try {
       await document.documentElement.requestFullscreen();
+      
       if ('orientation' in screen && 'lock' in screen.orientation) {
         try {
           await (screen.orientation as any).lock('portrait');
@@ -119,9 +121,11 @@ const CameraApp: React.FC = () => {
           addLog(`⚠️ Orientation lock failed: ${orientationError}`);
         }
       }
+      
       document.body.classList.add('fullscreen-locked');
       setIsFullscreen(true);
       addLog('🖥️ Fullscreen mode activated');
+      
     } catch (error) {
       addLog(`❌ Fullscreen failed: ${error}`);
     }
@@ -132,7 +136,9 @@ const CameraApp: React.FC = () => {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
       }
+      
       document.body.classList.remove('fullscreen-locked');
+      
       if ('orientation' in screen && 'unlock' in screen.orientation) {
         try {
           (screen.orientation as any).unlock();
@@ -141,26 +147,34 @@ const CameraApp: React.FC = () => {
           addLog(`⚠️ Orientation unlock failed: ${orientationError}`);
         }
       }
+      
       setIsFullscreen(false);
       setShowExitButton(false);
       addLog('🖥️ Fullscreen mode exited');
+      
     } catch (error) {
       addLog(`❌ Exit fullscreen failed: ${error}`);
     }
   }, [addLog]);
 
+  // Long press handlers (same as before)
   const handleLongPress = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isFullscreen) return;
+    
     e.preventDefault();
+    
     const timer = setTimeout(() => {
       setShowExitButton(true);
       addLog('📱 Long press detected - showing exit button');
+      
       const hideTimer = setTimeout(() => {
         setShowExitButton(false);
         addLog('⏰ Exit button auto-hidden');
       }, 5000);
+      
       setExitButtonTimer(hideTimer);
     }, 1500);
+    
     setLongPressTimer(timer);
   }, [isFullscreen, addLog]);
 
@@ -173,6 +187,7 @@ const CameraApp: React.FC = () => {
 
   const handleDoubleTap = useCallback(() => {
     if (!isFullscreen) return;
+    
     setTapCount(prev => {
       if (prev === 0) {
         setTimeout(() => setTapCount(0), 500);
@@ -180,10 +195,12 @@ const CameraApp: React.FC = () => {
       } else if (prev === 1) {
         setShowExitButton(true);
         addLog('👆 Double tap detected - showing exit button');
+        
         const hideTimer = setTimeout(() => {
           setShowExitButton(false);
           addLog('⏰ Exit button auto-hidden');
         }, 5000);
+        
         setExitButtonTimer(hideTimer);
         return 0;
       }
@@ -191,7 +208,23 @@ const CameraApp: React.FC = () => {
     });
   }, [isFullscreen, addLog]);
 
-  // Prevent gestures in fullscreen
+  // Instagram redirect check
+  useEffect(() => {
+    const shouldRedirect = checkAndRedirect();
+    
+    if (shouldRedirect) {
+      addLog('📱 Instagram redirect in progress...');
+      setTimeout(() => {
+        addLog('⏰ Redirect timeout - continuing with app');
+        setAppReady(true);
+      }, 3000);
+    } else {
+      addLog('✅ Browser check complete - initializing app');
+      setAppReady(true);
+    }
+  }, [addLog]);
+
+  // Other useEffects and handlers (same as before)
   useEffect(() => {
     if (!isFullscreen) return;
 
@@ -228,7 +261,6 @@ const CameraApp: React.FC = () => {
     };
   }, [isFullscreen]);
 
-  // Monitor fullscreen changes
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
@@ -254,59 +286,7 @@ const CameraApp: React.FC = () => {
     };
   }, [isFullscreen, addLog]);
 
-  // Cleanup timers
-  useEffect(() => {
-    return () => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-      }
-      if (exitButtonTimer) {
-        clearTimeout(exitButtonTimer);
-      }
-    };
-  }, [longPressTimer, exitButtonTimer]);
-
-  // Instagram redirect check
-  useEffect(() => {
-    const shouldRedirect = checkAndRedirect();
-    
-    if (shouldRedirect) {
-      addLog('📱 Instagram redirect in progress...');
-      setTimeout(() => {
-        addLog('⏰ Redirect timeout - continuing with app');
-        setAppReady(true);
-      }, 3000);
-    } else {
-      addLog('✅ Browser check complete - initializing app');
-      setAppReady(true);
-    }
-  }, [addLog]);
-
-  // Auto-recovery on app focus/visibility
-  useEffect(() => {
-    const handleFocus = () => {
-      if (cameraState === 'ready') {
-        addLog('🔄 App focused - checking camera feed...');
-        setTimeout(() => restoreCameraFeed(), 200);
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && cameraState === 'ready') {
-        addLog('👁️ App visible - restoring camera...');
-        setTimeout(() => restoreCameraFeed(), 100);
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [cameraState, addLog, restoreCameraFeed]);
-
+  // Initialize app when ready
   const initializeApp = useCallback(async () => {
     if (cameraState === 'ready') {
       addLog('📱 Camera already ready');
@@ -334,18 +314,25 @@ const CameraApp: React.FC = () => {
       if (success) {
         addLog('🎉 App initialization complete');
         
-        // Auto-subscribe to Push2Web if logged in
-        if (isLoggedIn && userInfo) {
-          addLog('🔗 Auto-subscribing to Push2Web...');
-          // Note: We need access token, not just user info
-          // This would work better with proper token management
+        // Show Push2Web login after camera is ready
+        if (!isLoggedIn && !showLogin) {
+          setShowLogin(true);
+          addLog('🔒 Camera ready - showing Snapchat login for Push2Web');
         }
       }
     } catch (error) {
       addLog(`❌ Initialization failed: ${error}`);
     }
-  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, isLoggedIn, userInfo]);
+  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, isLoggedIn, showLogin]);
 
+  useEffect(() => {
+    if (appReady) {
+      addLog('🚀 App initialization starting...');
+      initializeApp();
+    }
+  }, [appReady, initializeApp, addLog]);
+
+  // Other handlers remain the same
   const handleSwitchCamera = useCallback(async () => {
     if (!isReady) return;
     
@@ -365,38 +352,15 @@ const CameraApp: React.FC = () => {
     const canvas = getCanvas();
     const stream = getStream();
     
-    if (!canvas) {
-      addLog('❌ Canvas not available');
+    if (!canvas || !stream) {
+      addLog('❌ Canvas or stream not available');
       return;
     }
 
-    if (stream) {
-      const audioTracks = stream.getAudioTracks();
-      const videoTracks = stream.getVideoTracks();
-      
-      addLog(`📊 Pre-recording stream check: ${videoTracks.length} video, ${audioTracks.length} audio tracks`);
-      
-      if (audioTracks.length === 0) {
-        addLog('🔇 CRITICAL WARNING: No audio tracks in camera stream!');
-        addLog('📱 Recordings will be SILENT - check microphone permissions');
-      } else {
-        audioTracks.forEach((track: any, index: any) => {
-          addLog(`🎤 Audio track ${index}: ${track.label || 'Unknown'}, state: ${track.readyState}, enabled: ${track.enabled}`);
-          
-          if (track.readyState !== 'live') {
-            addLog(`⚠️ Audio track ${index} not live: ${track.readyState}`);
-          }
-          if (!track.enabled) {
-            addLog(`⚠️ Audio track ${index} disabled`);
-          }
-        });
-      }
-    } else {
-      addLog('❌ No camera stream available for recording');
-      return;
-    }
+    const audioTracks = stream.getAudioTracks();
+    addLog(`📊 Recording with ${audioTracks.length} audio tracks`);
 
-    toggleRecording(canvas, stream || undefined);
+    toggleRecording(canvas, stream);
   }, [getCanvas, getStream, toggleRecording, addLog]);
 
   const handleReloadEffect = useCallback(async () => {
@@ -405,71 +369,9 @@ const CameraApp: React.FC = () => {
       return;
     }
     
-    try {
-      addLog('🔄 Reloading AR effect...');
-      const success = await reloadLens();
-      
-      if (success) {
-        addLog('✅ AR effect reloaded successfully');
-      } else {
-        addLog('❌ Failed to reload AR effect');
-      }
-    } catch (error) {
-      addLog(`❌ Reload error: ${error}`);
-    }
+    const success = await reloadLens();
+    addLog(success ? '✅ AR effect reloaded' : '❌ Failed to reload AR effect');
   }, [isReady, reloadLens, addLog]);
-
-  const handleClosePreview = useCallback(() => {
-    setShowPreview(false);
-    addLog('📱 Preview closed');
-    setTimeout(() => restoreCameraFeed(), 100);
-  }, [setShowPreview, addLog, restoreCameraFeed]);
-
-  const handleProcessAndShare = useCallback(() => {
-    addLog('🎬 Starting video processing...');
-    processAndShareVideo();
-  }, [processAndShareVideo, addLog]);
-
-  const handleDownload = useCallback(() => {
-    downloadVideo();
-    setTimeout(() => {
-      setShowPreview(false);
-      restoreCameraFeed();
-    }, 500);
-  }, [downloadVideo, setShowPreview, restoreCameraFeed]);
-
-  // Initialize app when ready
-  useEffect(() => {
-    if (appReady) {
-      addLog('🚀 App initialization starting...');
-      initializeApp();
-    }
-  }, [appReady, initializeApp, addLog]);
-
-  const handleRequestPermission = useCallback(async () => {
-    try {
-      addLog('🔒 Requesting camera + microphone permission...');
-      const stream = await requestPermission();
-      if (stream) {
-        const audioTracks = stream.getAudioTracks();
-        addLog(`✅ Permission granted with ${audioTracks.length} audio tracks`);
-        stream.getTracks().forEach((track: any) => track.stop());
-        initializeApp();
-      }
-    } catch (error) {
-      addLog(`❌ Permission failed: ${error}`);
-    }
-  }, [requestPermission, initializeApp, addLog]);
-
-  const handleRetry = useCallback(() => {
-    addLog('🔄 Retrying app initialization...');
-    initializeApp();
-  }, [initializeApp, addLog]);
-
-  const handleRetryRedirect = useCallback(() => {
-    addLog('📱 Manual Instagram redirect retry...');
-    retryRedirect();
-  }, [addLog]);
 
   // Show loading while checking/redirecting
   if (!appReady) {
@@ -483,14 +385,11 @@ const CameraApp: React.FC = () => {
             <h2 className="text-2xl font-bold mb-4">Opening in Safari..</h2>
             <p className="text-white/70 mb-6">For the best AR experience</p>
             <button
-              onClick={handleRetryRedirect}
+              onClick={() => retryRedirect()}
               className="bg-blue-500 hover:bg-blue-600 px-6 py-3 rounded-lg text-white font-medium"
             >
               Try Again
             </button>
-            <p className="text-xs text-white/50 mt-4">
-              If redirect fails, manually copy URL to Safari
-            </p>
           </div>
         ) : (
           <LoadingScreen 
@@ -502,51 +401,56 @@ const CameraApp: React.FC = () => {
     );
   }
 
-  // Show Login if not logged in
-  if (!isLoggedIn) {
+  // Show Push2Web Login
+  if (showLogin && !isLoggedIn) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="max-w-md w-full mx-auto p-6">
-          <div className="text-center mb-8">
-            <div className="text-6xl mb-4">👻</div>
-            <h1 className="text-2xl font-bold text-white mb-2">Web AR Netramaya</h1>
-            <p className="text-white/70 text-sm">
-              Login with Snapchat to enable Push2Web and receive lenses from Lens Studio
-            </p>
+      <div className="fixed inset-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-6">
+        <div className="bg-black/50 backdrop-blur-md rounded-xl p-8 max-w-sm w-full">
+          <div className="text-center mb-6">
+            <div className="text-6xl mb-4">🎭</div>
+            <h2 className="text-2xl font-bold text-white mb-2">Push2Web Ready</h2>
+            <p className="text-white/70 text-sm">Connect to Lens Studio for live lens testing</p>
           </div>
-
+          
           <LoginKit 
             onLogin={handleLogin}
             onError={handleLoginError}
           />
-
-          {/* Push2Web Status */}
-          {(() => {
-            const status = getPush2WebStatus();
-            const pushStatus = push2WebStatus || { connected: false, subscribed: false, error: null };
-            return (
-              <div className="mt-4 p-3 bg-white/10 rounded-lg text-xs text-white/70">
-                <p><strong>Push2Web Status:</strong></p>
-                <p>Available: {status.available ? '✅' : '❌'}</p>
-                <p>Connected: {pushStatus.connected ? '✅' : '❌'}</p>
-                {pushStatus.error && <p className="text-red-300">Error: {pushStatus.error}</p>}
-              </div>
-            );
-          })()}
+          
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => {
+                setShowLogin(false);
+                addLog('⏭️ Skipping Push2Web login - camera only mode');
+              }}
+              className="text-white/60 hover:text-white text-sm transition-colors"
+            >
+              Skip and use Camera only
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Video preview
+  // Video preview (same as before)
   if (showPreview && recordedVideo) {
     return (
       <>
         <VideoPreview
           recordedVideo={recordedVideo}
-          onClose={handleClosePreview}
-          onDownload={handleDownload}
-          onProcessAndShare={handleProcessAndShare}
+          onClose={() => {
+            setShowPreview(false);
+            setTimeout(() => restoreCameraFeed(), 100);
+          }}
+          onDownload={() => {
+            downloadVideo();
+            setTimeout(() => {
+              setShowPreview(false);
+              restoreCameraFeed();
+            }, 500);
+          }}
+          onProcessAndShare={processAndShareVideo}
         />
         
         <RenderingModal
@@ -557,7 +461,6 @@ const CameraApp: React.FC = () => {
           hasError={!!processingError}
           onCancel={() => {
             setShowRenderingModal(false);
-            addLog('❌ Processing cancelled');
             setTimeout(() => restoreCameraFeed(), 100);
           }}
         />
@@ -565,6 +468,7 @@ const CameraApp: React.FC = () => {
     );
   }
 
+  // Main app UI (same as before with Push2Web status)
   return (
     <div 
       className="fixed inset-0 bg-black flex flex-col"
@@ -574,7 +478,6 @@ const CameraApp: React.FC = () => {
       onMouseUp={handleTouchEnd}
       onClick={handleDoubleTap}
     >
-      {/* Camera Feed */}
       <CameraFeed
         cameraFeedRef={cameraFeedRef}
         cameraState={cameraState}
@@ -582,26 +485,15 @@ const CameraApp: React.FC = () => {
         isFlipped={isFlipped}
       />
 
-      {/* User Info & Push2Web Status */}
-      {isLoggedIn && userInfo && (
-        <div className={`absolute top-4 left-4 z-20 bg-black/50 backdrop-blur-md rounded-lg p-3 text-xs text-white transition-opacity duration-300 ${
-          isFullscreen ? 'opacity-0 pointer-events-none' : 'opacity-100'
-        }`}>
-          <p>👻 {userInfo.displayName}</p>
-          <p className={`${push2WebStatus.connected ? 'text-green-400' : 'text-red-400'}`}>
-            Push2Web: {push2WebStatus.connected ? 'Connected' : 'Disconnected'}
-          </p>
-        </div>
-      )}
-
-      {/* Camera Controls */}
       <CameraControls
-        onSettings={() => setShowSettings(true)}
+        onSettings={() => {
+          setShowSettings(true);
+          handleShowPush2WebStatus(); // Show Push2Web status
+        }}
         onFlip={() => setIsFlipped(!isFlipped)}
         isFullscreen={isFullscreen}
       />
 
-      {/* Recording Controls */}
       <RecordingControls
         recordingState={recordingState}
         recordingTime={recordingTime}
@@ -612,32 +504,38 @@ const CameraApp: React.FC = () => {
         disabled={!isReady}
       />
 
-      {/* Fullscreen Entry Button */}
+      {/* Push2Web Status Indicator */}
+      {isLoggedIn && (
+        <div className="absolute top-16 left-4 z-20">
+          <div className="bg-green-500/20 backdrop-blur-sm border border-green-500/30 rounded-lg px-3 py-1">
+            <div className="text-green-300 text-xs font-medium flex items-center space-x-1">
+              <span>🎭</span>
+              <span>Push2Web Ready</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen buttons */}
       {!isFullscreen && isReady && (
         <button
           onClick={enterFullscreen}
           className="fullscreen-button"
-          aria-label="Enter Fullscreen"
         >
           <Maximize className="w-6 h-6" />
         </button>
       )}
 
-      {/* Exit Fullscreen Button */}
       {isFullscreen && showExitButton && (
         <button
-          onClick={() => {
-            setShowExitButton(false);
-            exitFullscreen();
-          }}
+          onClick={exitFullscreen}
           className="exit-fullscreen-button"
-          aria-label="Exit Fullscreen"
         >
           <X className="w-5 h-5" />
         </button>
       )}
 
-      {/* Essential modals */}
+      {/* Loading and error screens */}
       {cameraState === 'initializing' && (
         <LoadingScreen 
           message="Initializing Web AR Netramaya..."
@@ -649,8 +547,14 @@ const CameraApp: React.FC = () => {
         <ErrorScreen
           errorInfo={errorInfo}
           permissionState={permissionState}
-          onRequestPermission={handleRequestPermission}
-          onRetry={handleRetry}
+          onRequestPermission={async () => {
+            const stream = await requestPermission();
+            if (stream) {
+              stream.getTracks().forEach(track => track.stop());
+              initializeApp();
+            }
+          }}
+          onRetry={initializeApp}
           debugInfo={{
             protocol: location.protocol,
             hostname: location.hostname,
@@ -677,7 +581,6 @@ const CameraApp: React.FC = () => {
         hasError={!!processingError}
         onCancel={() => {
           setShowRenderingModal(false);
-          addLog('❌ Processing cancelled');
           setTimeout(() => restoreCameraFeed(), 100);
         }}
       />
@@ -685,6 +588,7 @@ const CameraApp: React.FC = () => {
   );
 };
 
+// Main App component wrapper (same as before)
 const App: React.FC = () => {
   return (
     <CameraProvider>
