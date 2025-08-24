@@ -12,25 +12,25 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check for OAuth callback on mount (in case we're in popup or main window)
+  // Listen for OAuth via BroadcastChannel
   useEffect(() => {
-    // Handle OAuth callback if we're in callback URL
-    if (window.location.hash.includes('access_token')) {
-      addLog?.('🔗 OAuth callback detected in current window');
-      handleOAuthCallback();
-    }
-
-    // Listen for OAuth success events (from popup or direct)
-    const handleOAuthSuccess = (event: CustomEvent) => {
-      const tokenData = event.detail;
-      addLog?.(`✅ OAuth success: ${tokenData.access_token.substring(0, 20)}...`);
-      onLogin(tokenData.access_token);
+    const channel = new BroadcastChannel('snapchat_oauth');
+    
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'oauth_success') {
+        addLog?.(`✅ OAuth token received: ${event.data.token.substring(0, 20)}...`);
+        onLogin(event.data.token);
+      } else if (event.data.type === 'oauth_error') {
+        addLog?.(`❌ OAuth error: ${event.data.error}`);
+        setError(event.data.error);
+      }
     };
-
-    window.addEventListener('snapchat-oauth-success', handleOAuthSuccess as EventListener);
-
+    
+    channel.addEventListener('message', handleMessage);
+    
     return () => {
-      window.removeEventListener('snapchat-oauth-success', handleOAuthSuccess as EventListener);
+      channel.removeEventListener('message', handleMessage);
+      channel.close();
     };
   }, [addLog, onLogin]);
 
