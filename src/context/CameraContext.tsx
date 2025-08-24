@@ -222,7 +222,7 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     accessToken,
     setLoginState,
     
-    // Refs
+    // Refs.
     cameraFeedRef
   };
 
