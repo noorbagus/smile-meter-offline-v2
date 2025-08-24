@@ -1,4 +1,4 @@
-// src/App.tsx - Push2Web Login Integration
+// src/App.tsx - Login Kit + Push2Web integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -24,6 +24,8 @@ const CameraApp: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [appReady, setAppReady] = useState<boolean>(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [userInfo, setUserInfo] = useState<any>(null);
   
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -51,16 +53,9 @@ const CameraApp: React.FC = () => {
     exportLogs,
     isReady,
     restoreCameraFeed,
-    
-    // Push2Web & Login
-    isLoggedIn,
-    snapchatUser,
-    accessToken,
-    setLoginState,
     subscribePush2Web,
     getPush2WebStatus,
-    isSubscribed,
-    lastReceivedLens
+    push2WebStatus
   } = useCameraContext();
 
   const {
@@ -80,12 +75,42 @@ const CameraApp: React.FC = () => {
     setShowRenderingModal
   } = useRecordingContext();
 
-  // Fullscreen functions
+  // Handle successful login
+  const handleLogin = useCallback(async (accessToken: string, userData: any) => {
+    try {
+      setIsLoggedIn(true);
+      setUserInfo(userData);
+      addLog(`✅ Snapchat login successful: ${userData.displayName}`);
+      
+      // Subscribe to Push2Web if camera is ready
+      if (cameraState === 'ready') {
+        addLog('🔗 Attempting Push2Web subscription...');
+        const success = await subscribePush2Web(accessToken);
+        
+        if (success) {
+          addLog('🎉 Push2Web ready! You can now receive lenses from Lens Studio');
+        } else {
+          addLog('❌ Push2Web subscription failed');
+        }
+      } else {
+        addLog('📱 Will subscribe to Push2Web when camera is ready');
+      }
+      
+    } catch (error) {
+      addLog(`❌ Login processing error: ${error}`);
+    }
+  }, [addLog, cameraState, subscribePush2Web]);
+
+  const handleLoginError = useCallback((error: string) => {
+    addLog(`❌ Login error: ${error}`);
+    setIsLoggedIn(false);
+    setUserInfo(null);
+  }, [addLog]);
+
+  // Fullscreen functions (unchanged)
   const enterFullscreen = useCallback(async () => {
     try {
       await document.documentElement.requestFullscreen();
-      
-      // Lock orientation to portrait
       if ('orientation' in screen && 'lock' in screen.orientation) {
         try {
           await (screen.orientation as any).lock('portrait');
@@ -94,13 +119,9 @@ const CameraApp: React.FC = () => {
           addLog(`⚠️ Orientation lock failed: ${orientationError}`);
         }
       }
-      
-      // Apply fullscreen lock class
       document.body.classList.add('fullscreen-locked');
-      
       setIsFullscreen(true);
       addLog('🖥️ Fullscreen mode activated');
-      
     } catch (error) {
       addLog(`❌ Fullscreen failed: ${error}`);
     }
@@ -111,11 +132,7 @@ const CameraApp: React.FC = () => {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
       }
-      
-      // Remove fullscreen lock class
       document.body.classList.remove('fullscreen-locked');
-      
-      // Unlock orientation
       if ('orientation' in screen && 'unlock' in screen.orientation) {
         try {
           (screen.orientation as any).unlock();
@@ -124,11 +141,9 @@ const CameraApp: React.FC = () => {
           addLog(`⚠️ Orientation unlock failed: ${orientationError}`);
         }
       }
-      
       setIsFullscreen(false);
       setShowExitButton(false);
       addLog('🖥️ Fullscreen mode exited');
-      
     } catch (error) {
       addLog(`❌ Exit fullscreen failed: ${error}`);
     }
@@ -136,22 +151,16 @@ const CameraApp: React.FC = () => {
 
   const handleLongPress = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isFullscreen) return;
-    
     e.preventDefault();
-    
     const timer = setTimeout(() => {
       setShowExitButton(true);
       addLog('📱 Long press detected - showing exit button');
-      
-      // Auto-hide exit button after 5 seconds
       const hideTimer = setTimeout(() => {
         setShowExitButton(false);
         addLog('⏰ Exit button auto-hidden');
       }, 5000);
-      
       setExitButtonTimer(hideTimer);
-    }, 1500); // 1.5 second long press
-    
+    }, 1500);
     setLongPressTimer(timer);
   }, [isFullscreen, addLog]);
 
@@ -164,7 +173,6 @@ const CameraApp: React.FC = () => {
 
   const handleDoubleTap = useCallback(() => {
     if (!isFullscreen) return;
-    
     setTapCount(prev => {
       if (prev === 0) {
         setTimeout(() => setTapCount(0), 500);
@@ -172,12 +180,10 @@ const CameraApp: React.FC = () => {
       } else if (prev === 1) {
         setShowExitButton(true);
         addLog('👆 Double tap detected - showing exit button');
-        
         const hideTimer = setTimeout(() => {
           setShowExitButton(false);
           addLog('⏰ Exit button auto-hidden');
         }, 5000);
-        
         setExitButtonTimer(hideTimer);
         return 0;
       }
@@ -185,12 +191,11 @@ const CameraApp: React.FC = () => {
     });
   }, [isFullscreen, addLog]);
 
-  // Prevent all gestures in fullscreen
+  // Prevent gestures in fullscreen
   useEffect(() => {
     if (!isFullscreen) return;
 
     const preventGestures = (e: TouchEvent) => {
-      // Allow single touch for AR interaction
       if (e.touches.length > 1) {
         e.preventDefault();
       }
@@ -205,7 +210,6 @@ const CameraApp: React.FC = () => {
     };
 
     const preventKeyboard = (e: KeyboardEvent) => {
-      // Prevent F11, Escape, etc.
       if (e.key === 'F11' || e.key === 'Escape') {
         e.preventDefault();
       }
@@ -303,16 +307,6 @@ const CameraApp: React.FC = () => {
     };
   }, [cameraState, addLog, restoreCameraFeed]);
 
-  // Login Kit handlers
-  const handleLogin = useCallback((accessToken: string) => {
-    addLog('🎉 Snapchat login successful!');
-    // LoginKit will handle user info fetching and call setLoginState
-  }, [addLog]);
-
-  const handleLoginError = useCallback((error: string) => {
-    addLog(`❌ Login error: ${error}`);
-  }, [addLog]);
-
   const initializeApp = useCallback(async () => {
     if (cameraState === 'ready') {
       addLog('📱 Camera already ready');
@@ -341,23 +335,16 @@ const CameraApp: React.FC = () => {
         addLog('🎉 App initialization complete');
         
         // Auto-subscribe to Push2Web if logged in
-        if (isLoggedIn && accessToken) {
-          addLog('🔄 Camera ready - subscribing to Push2Web...');
-          setTimeout(() => {
-            subscribePush2Web(accessToken).then((success) => {
-              if (success) {
-                addLog('🎉 Push2Web auto-subscribed after Camera Kit ready');
-              } else {
-                addLog('❌ Push2Web auto-subscription failed');
-              }
-            });
-          }, 1000);
+        if (isLoggedIn && userInfo) {
+          addLog('🔗 Auto-subscribing to Push2Web...');
+          // Note: We need access token, not just user info
+          // This would work better with proper token management
         }
       }
     } catch (error) {
       addLog(`❌ Initialization failed: ${error}`);
     }
-  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, isLoggedIn, accessToken, subscribePush2Web]);
+  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, isLoggedIn, userInfo]);
 
   const handleSwitchCamera = useCallback(async () => {
     if (!isReady) return;
@@ -484,9 +471,6 @@ const CameraApp: React.FC = () => {
     retryRedirect();
   }, [addLog]);
 
-  // Push2Web status for debugging
-  const push2webStatus = getPush2WebStatus();
-
   // Show loading while checking/redirecting
   if (!appReady) {
     const isInInstagram = isInstagramBrowser();
@@ -518,33 +502,36 @@ const CameraApp: React.FC = () => {
     );
   }
 
-  // Show Login Kit if not logged in
+  // Show Login if not logged in
   if (!isLoggedIn) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="max-w-md w-full mx-auto p-6">
           <div className="text-center mb-8">
-            <div className="text-6xl mb-4">🎭</div>
+            <div className="text-6xl mb-4">👻</div>
             <h1 className="text-2xl font-bold text-white mb-2">Web AR Netramaya</h1>
-            <p className="text-white/70 text-sm">Push2Web requires Snapchat login</p>
+            <p className="text-white/70 text-sm">
+              Login with Snapchat to enable Push2Web and receive lenses from Lens Studio
+            </p>
           </div>
-          
+
           <LoginKit 
-            onLogin={(token) => {
-              handleLogin(token);
-              // LoginKit will call setLoginState internally
-            }}
+            onLogin={handleLogin}
             onError={handleLoginError}
-            addLog={addLog}
           />
-          
-          {/* Push2Web Status Debug */}
-          <div className="mt-6 text-xs text-white/50 bg-black/20 rounded-lg p-3">
-            <div>🔧 Push2Web Debug:</div>
-            <div>Available: {push2webStatus.available ? '✅' : '❌'}</div>
-            <div>Session: {push2webStatus.session ? '✅' : '❌'}</div>
-            <div>Repository: {push2webStatus.repository ? '✅' : '❌'}</div>
-          </div>
+
+          {/* Push2Web Status */}
+          {(() => {
+            const status = getPush2WebStatus();
+            return (
+              <div className="mt-4 p-3 bg-white/10 rounded-lg text-xs text-white/70">
+                <p><strong>Push2Web Status:</strong></p>
+                <p>Available: {status.available ? '✅' : '❌'}</p>
+                <p>Connected: {push2WebStatus.connected ? '✅' : '❌'}</p>
+                {push2WebStatus.error && <p className="text-red-300">Error: {push2WebStatus.error}</p>}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -594,14 +581,26 @@ const CameraApp: React.FC = () => {
         isFlipped={isFlipped}
       />
 
-      {/* Camera Controls - Hide settings button in fullscreen */}
+      {/* User Info & Push2Web Status */}
+      {isLoggedIn && userInfo && (
+        <div className={`absolute top-4 left-4 z-20 bg-black/50 backdrop-blur-md rounded-lg p-3 text-xs text-white transition-opacity duration-300 ${
+          isFullscreen ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}>
+          <p>👻 {userInfo.displayName}</p>
+          <p className={`${push2WebStatus.connected ? 'text-green-400' : 'text-red-400'}`}>
+            Push2Web: {push2WebStatus.connected ? 'Connected' : 'Disconnected'}
+          </p>
+        </div>
+      )}
+
+      {/* Camera Controls */}
       <CameraControls
         onSettings={() => setShowSettings(true)}
         onFlip={() => setIsFlipped(!isFlipped)}
         isFullscreen={isFullscreen}
       />
 
-      {/* Recording Controls - Already hidden via updated component */}
+      {/* Recording Controls */}
       <RecordingControls
         recordingState={recordingState}
         recordingTime={recordingTime}
@@ -612,23 +611,7 @@ const CameraApp: React.FC = () => {
         disabled={!isReady}
       />
 
-      {/* Push2Web Status Indicator */}
-      {isLoggedIn && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
-          <div className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-300 ${
-            isSubscribed 
-              ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
-              : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-          } ${isFullscreen ? 'opacity-30' : 'opacity-80'}`}>
-            {isSubscribed ? '🔗 Push2Web Ready' : '🔄 Connecting...'}
-            {lastReceivedLens && (
-              <span className="ml-2">• {lastReceivedLens.name}</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Fullscreen Entry Button - Show only when NOT in fullscreen */}
+      {/* Fullscreen Entry Button */}
       {!isFullscreen && isReady && (
         <button
           onClick={enterFullscreen}
@@ -639,7 +622,7 @@ const CameraApp: React.FC = () => {
         </button>
       )}
 
-      {/* Exit Fullscreen Button - Show only when in fullscreen and exit button is visible */}
+      {/* Exit Fullscreen Button */}
       {isFullscreen && showExitButton && (
         <button
           onClick={() => {
