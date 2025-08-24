@@ -38,8 +38,8 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onSettings }) =>
         </div>
       </div>
 
-      {/* Attribution moved to bottom center - small */}
-      <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-20">
+      {/* Attribution moved to bottom center - small, 1% from bottom */}
+      <div className="absolute bottom-[1vh] left-1/2 transform -translate-x-1/2 z-20">
         <img 
           src="images/attribution.png" 
           alt="Attribution" 
