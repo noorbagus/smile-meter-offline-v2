@@ -1,4 +1,4 @@
-// src/App.tsx - Main app dengan Push2Web integration
+// src/App.tsx - Complete with OAuth routing
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -7,6 +7,7 @@ import {
   useRecordingContext 
 } from './context';
 import { LoginKit } from './components/LoginKit';
+import { OAuthCallback } from './components/OAuthCallback';
 import {
   LoadingScreen,
   ErrorScreen,
@@ -19,10 +20,13 @@ import {
 } from './components';
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 import { Maximize, X } from 'lucide-react';
-import { handleOAuthCallback } from './utils/popupOAuthHandler';
-
 
 const CameraApp: React.FC = () => {
+  // Check if this is OAuth callback URL
+  if (window.location.pathname === '/oauth-callback' || window.location.hash.includes('access_token')) {
+    return <OAuthCallback />;
+  }
+
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [appReady, setAppReady] = useState<boolean>(false);
@@ -110,7 +114,7 @@ const CameraApp: React.FC = () => {
     addLog(`📊 Push2Web Status: Available: ${status.available}, Subscribed: ${status.subscribed}, Session: ${status.session}, Repository: ${status.repository}`);
   }, [addLog, getPush2WebStatus]);
 
-  // Fullscreen functions (same as before)
+  // Fullscreen functions
   const enterFullscreen = useCallback(async () => {
     try {
       await document.documentElement.requestFullscreen();
@@ -159,7 +163,7 @@ const CameraApp: React.FC = () => {
     }
   }, [addLog]);
 
-  // Long press handlers (same as before)
+  // Long press handlers
   const handleLongPress = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     if (!isFullscreen) return;
     
@@ -226,7 +230,7 @@ const CameraApp: React.FC = () => {
     }
   }, [addLog]);
 
-  // Other useEffects and handlers (same as before)
+  // Fullscreen event handlers
   useEffect(() => {
     if (!isFullscreen) return;
 
@@ -334,27 +338,7 @@ const CameraApp: React.FC = () => {
     }
   }, [appReady, initializeApp, addLog]);
 
-  useEffect(() => {
-    // Handle OAuth callback if present in main window
-    if (window.location.hash.includes('access_token')) {
-      addLog('🔗 OAuth callback detected in main window');
-      
-      // Handle callback and listen for success event
-      const handleOAuthSuccess = (event: CustomEvent) => {
-        const tokenData = event.detail;
-        addLog(`✅ OAuth token received: ${tokenData.access_token.substring(0, 20)}...`);
-        handleLogin(tokenData.access_token);
-      };
-  
-      window.addEventListener('snapchat-oauth-success', handleOAuthSuccess as EventListener);
-      handleOAuthCallback();
-  
-      return () => {
-        window.removeEventListener('snapchat-oauth-success', handleOAuthSuccess as EventListener);
-      };
-    }
-  }, [addLog, handleLogin]);
-  // Other handlers remain the same
+  // Other handlers
   const handleSwitchCamera = useCallback(async () => {
     if (!isReady) return;
     
@@ -455,7 +439,7 @@ const CameraApp: React.FC = () => {
     );
   }
 
-  // Video preview (same as before)
+  // Video preview
   if (showPreview && recordedVideo) {
     return (
       <>
@@ -490,7 +474,7 @@ const CameraApp: React.FC = () => {
     );
   }
 
-  // Main app UI (same as before with Push2Web status)
+  // Main app UI
   return (
     <div 
       className="fixed inset-0 bg-black flex flex-col"
@@ -510,7 +494,7 @@ const CameraApp: React.FC = () => {
       <CameraControls
         onSettings={() => {
           setShowSettings(true);
-          handleShowPush2WebStatus(); // Show Push2Web status
+          handleShowPush2WebStatus();
         }}
         onFlip={() => setIsFlipped(!isFlipped)}
         isFullscreen={isFullscreen}
@@ -585,18 +569,18 @@ const CameraApp: React.FC = () => {
         />
       )}
 
-  <SettingsPanel
-    isOpen={showSettings}
-    onClose={() => setShowSettings(false)}
-    debugLogs={debugLogs}
-    onExportLogs={exportLogs}
-    currentStream={getStream()}
-    canvas={getCanvas()}
-    containerRef={cameraFeedRef}
-    subscribePush2Web={subscribePush2Web}
-    getPush2WebStatus={getPush2WebStatus}
-    addLog={addLog}
-  />
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        debugLogs={debugLogs}
+        onExportLogs={exportLogs}
+        currentStream={getStream()}
+        canvas={getCanvas()}
+        containerRef={cameraFeedRef}
+        subscribePush2Web={subscribePush2Web}
+        getPush2WebStatus={getPush2WebStatus}
+        addLog={addLog}
+      />
 
       <RenderingModal
         isOpen={showRenderingModal && !showPreview}
@@ -613,7 +597,7 @@ const CameraApp: React.FC = () => {
   );
 };
 
-// Main App component wrapper (same as before)
+// Main App component wrapper
 const App: React.FC = () => {
   return (
     <CameraProvider>
