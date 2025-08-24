@@ -19,6 +19,8 @@ import {
 } from './components';
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
 import { Maximize, X } from 'lucide-react';
+import { handleOAuthCallback } from './utils/popupOAuthHandler';
+
 
 const CameraApp: React.FC = () => {
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
@@ -332,6 +334,26 @@ const CameraApp: React.FC = () => {
     }
   }, [appReady, initializeApp, addLog]);
 
+  useEffect(() => {
+    // Handle OAuth callback if present in main window
+    if (window.location.hash.includes('access_token')) {
+      addLog('🔗 OAuth callback detected in main window');
+      
+      // Handle callback and listen for success event
+      const handleOAuthSuccess = (event: CustomEvent) => {
+        const tokenData = event.detail;
+        addLog(`✅ OAuth token received: ${tokenData.access_token.substring(0, 20)}...`);
+        handleLogin(tokenData.access_token);
+      };
+  
+      window.addEventListener('snapchat-oauth-success', handleOAuthSuccess as EventListener);
+      handleOAuthCallback();
+  
+      return () => {
+        window.removeEventListener('snapchat-oauth-success', handleOAuthSuccess as EventListener);
+      };
+    }
+  }, [addLog, handleLogin]);
   // Other handlers remain the same
   const handleSwitchCamera = useCallback(async () => {
     if (!isReady) return;
