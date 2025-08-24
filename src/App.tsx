@@ -307,11 +307,9 @@ const CameraApp: React.FC = () => {
     
     if (cameraState === 'ready') {
       addLog('📱 Camera ready - checking canvas attachment');
-      // Force canvas re-attachment if needed
       const canvas = getCanvas();
       if (canvas && cameraFeedRef.current) {
         addLog('🔄 Re-attaching canvas to container');
-        // Force re-render canvas
         setTimeout(() => {
           if (canvas && cameraFeedRef.current) {
             canvas.style.display = 'block';
@@ -323,7 +321,7 @@ const CameraApp: React.FC = () => {
     }
 
     try {
-      addLog('🎬 Starting app initialization...');
+      addLog('🎬 Starting Camera Kit initialization...');
       
       const hasPermission = await checkCameraPermission();
       if (!hasPermission) {
@@ -349,20 +347,14 @@ const CameraApp: React.FC = () => {
       addLog('🎭 Initializing Camera Kit...');
       const success = await initializeCameraKit(stream, cameraFeedRef);
       if (success) {
-        addLog('🎉 App initialization complete');
-        
-        // Show Push2Web login after camera is ready (only if not logged in)
-        if (!isLoggedIn && !showLogin) {
-          setShowLogin(true);
-          addLog('🔒 Camera ready - showing Snapchat login for Push2Web');
-        }
+        addLog('🎉 Camera Kit initialization complete');
       } else {
         addLog('❌ Camera Kit initialization failed');
       }
     } catch (error) {
       addLog(`❌ Initialization failed: ${error}`);
     }
-  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, isLoggedIn, showLogin, getCanvas]);
+  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, getCanvas]);
 
   useEffect(() => {
     if (appReady) {
@@ -370,6 +362,20 @@ const CameraApp: React.FC = () => {
       initializeApp();
     }
   }, [appReady, initializeApp, addLog]);
+
+  // Check for saved login after camera is ready
+  useEffect(() => {
+    if (isReady && !isLoggedIn) {
+      // Check saved token
+      const savedToken = localStorage.getItem('snap_access_token');
+      if (savedToken) {
+        handleLogin(savedToken);
+      } else if (!showLogin) {
+        setShowLogin(true);
+        addLog('🔒 Camera ready - showing Snapchat login for Push2Web');
+      }
+    }
+  }, [isReady, isLoggedIn, showLogin, handleLogin, addLog]);
 
   // Other handlers
   const handleSwitchCamera = useCallback(async () => {
