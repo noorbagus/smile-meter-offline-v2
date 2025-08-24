@@ -35,6 +35,49 @@ body {
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  /* FULLSCREEN LOCK - Disable all gestures when in fullscreen */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Fullscreen mode specific locks */
+.fullscreen-locked {
+  overflow: hidden !important;
+  touch-action: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  user-select: none !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.fullscreen-locked * {
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  pointer-events: auto; /* Keep tap events for AR interaction */
+}
+
+/* Disable drag/drop globally in fullscreen */
+.fullscreen-locked img,
+.fullscreen-locked video,
+.fullscreen-locked canvas {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  pointer-events: none; /* Canvas should not capture drag events */
+}
+
+/* Allow AR interaction only */
+.fullscreen-locked canvas {
+  pointer-events: auto !important; /* AR canvas needs touch events */
 }
 
 #root {
@@ -152,6 +195,109 @@ body {
   }
 }
 
+/* FULLSCREEN BUTTON STYLES */
+.fullscreen-button {
+  position: fixed;
+  bottom: clamp(20px, 4vh, 32px);
+  right: clamp(16px, 4vw, 24px);
+  z-index: 50;
+  width: clamp(56px, 12vw, 72px);
+  height: clamp(56px, 12vw, 72px);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  animation: pulse-glow 2s infinite;
+}
+
+.fullscreen-button:hover {
+  background: rgba(0, 0, 0, 0.8);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.1);
+}
+
+.fullscreen-button:active {
+  transform: scale(0.95);
+}
+
+/* Exit button (X) styles */
+.exit-fullscreen-button {
+  position: fixed;
+  top: clamp(20px, 4vh, 32px);
+  right: clamp(16px, 4vw, 24px);
+  z-index: 60;
+  width: clamp(48px, 10vw, 64px);
+  height: clamp(48px, 10vw, 64px);
+  background: rgba(220, 38, 38, 0.8);
+  backdrop-filter: blur(8px);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.exit-fullscreen-button:hover {
+  background: rgba(220, 38, 38, 1);
+  transform: scale(1.1);
+}
+
+.exit-fullscreen-button:active {
+  transform: scale(0.95);
+}
+
+/* Pulse animation for fullscreen button */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Hide buttons when not needed */
+.fullscreen-button.hidden,
+.exit-fullscreen-button.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.8);
+}
+
+/* Auto-hide with timer */
+.exit-fullscreen-button.auto-hiding {
+  animation: fadeOut 0.5s ease-out 4.5s forwards;
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+  }
+}
+
 /* Mobile-first responsive breakpoints */
 @media (max-width: 480px) {
   html {
@@ -170,6 +316,20 @@ body {
     width: clamp(56px, 13vw, 72px);
     height: clamp(56px, 13vw, 72px);
   }
+  
+  .fullscreen-button {
+    width: 56px;
+    height: 56px;
+    bottom: 16px;
+    right: 16px;
+  }
+  
+  .exit-fullscreen-button {
+    width: 48px;
+    height: 48px;
+    top: 16px;
+    right: 16px;
+  }
 }
 
 @media (min-width: 768px) {
@@ -181,6 +341,16 @@ body {
 @media (min-width: 1024px) {
   html {
     font-size: 18px; /* Fixed for desktop */
+  }
+  
+  .fullscreen-button {
+    width: 72px;
+    height: 72px;
+  }
+  
+  .exit-fullscreen-button {
+    width: 64px;
+    height: 64px;
   }
 }
 
@@ -194,6 +364,16 @@ body {
   .text-responsive-sm { font-size: clamp(11px, 2.5vw, 13px); }
   .text-responsive-base { font-size: clamp(13px, 3vw, 15px); }
   .text-responsive-lg { font-size: clamp(15px, 3.5vw, 18px); }
+  
+  .fullscreen-button {
+    bottom: 12px;
+    right: 12px;
+  }
+  
+  .exit-fullscreen-button {
+    top: 12px;
+    right: 12px;
+  }
 }
 
 /* High DPI displays */
@@ -209,6 +389,9 @@ body {
   .btn-responsive-sm { min-width: 44px; min-height: 44px; }
   .btn-responsive-md { min-width: 48px; min-height: 48px; }
   .btn-responsive-lg { min-width: 56px; min-height: 56px; }
+  
+  .fullscreen-button { min-width: 56px; min-height: 56px; }
+  .exit-fullscreen-button { min-width: 48px; min-height: 48px; }
 }
 
 /* Prevent text selection and zoom on mobile */
