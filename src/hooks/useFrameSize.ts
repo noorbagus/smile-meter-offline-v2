@@ -32,34 +32,34 @@ export const useFrameSize = () => {
   const getFrameDimensions = (size: FrameSize): FrameDimensions => {
     const configs = {
       small: {
-        width: 'min(100vh * 9/16, 50vw)',
-        height: 'min(100vw * 16/9, 50vh)',
-        maxWidth: '450px',   // 50% of 900
-        maxHeight: '800px',  // 50% of 1600
+        width: '50vw',
+        height: '50vh', 
+        maxWidth: '720px',
+        maxHeight: '1280px',
         label: 'Small (50%)',
         percentage: '50%'
       },
       medium: {
-        width: 'min(100vh * 9/16, 65vw)',
-        height: 'min(100vw * 16/9, 65vh)',
-        maxWidth: '585px',   // 65% of 900
-        maxHeight: '1040px', // 65% of 1600
+        width: '65vw',
+        height: '65vh',
+        maxWidth: '936px', 
+        maxHeight: '1664px',
         label: 'Medium (65%)',
         percentage: '65%'
       },
       large: {
-        width: 'min(100vh * 9/16, 80vw)',
-        height: 'min(100vw * 16/9, 80vh)',
-        maxWidth: '720px',   // 80% of 900
-        maxHeight: '1280px', // 80% of 1600
+        width: '80vw', 
+        height: '80vh',
+        maxWidth: '1152px',
+        maxHeight: '2048px',
         label: 'Large (80%)',
         percentage: '80%'
       },
       max: {
-        width: 'min(100vh * 9/16, 100vw)',
-        height: 'min(100vw * 16/9, 100vh)',
-        maxWidth: '1440px',  // Full monitor width
-        maxHeight: '2560px', // Full monitor height
+        width: '100vw',
+        height: '100vh',
+        maxWidth: '1440px',
+        maxHeight: '2560px', 
         label: 'Maximum (Full Screen)',
         percentage: '100%'
       }
