@@ -212,7 +212,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           left: 0;
           width: 100vw;
           height: 100vh;
-          transform: rotate(180deg);
+          transform: none;
           object-fit: cover;
           object-position: center;
           background: transparent;
@@ -237,7 +237,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           containerReference.current.appendChild(canvas);
           isAttachedRef.current = true;
           
-          addLog(`✅ Canvas attached with 180° rotation and full screen cover`);
+          addLog(`✅ Canvas attached - Full screen cover mode`);
         } catch (e) {
           addLog(`❌ Attachment failed: ${e}`);
         }

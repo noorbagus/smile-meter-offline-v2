@@ -1,4 +1,4 @@
-// src/config/cameraKit.ts - MAX QUALITY: Hardware Landscape → Software Portrait
+// src/config/cameraKit.ts - 270° rotation config
 import type { CameraKitConfig } from '../types/camera';
 
 const API_TOKEN = import.meta.env.VITE_CAMERA_KIT_API_TOKEN;
@@ -7,21 +7,19 @@ const LENS_ID = import.meta.env.VITE_CAMERA_KIT_LENS_ID;
 const LENS_GROUP_ID = import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID;
 
 /**
- * MAKSIMAL PORTRAIT CANVAS - Rotate hardware landscape ke portrait
- * Hardware landscape → Software portrait transformation dengan max quality edit
+ * 270° PORTRAIT CANVAS - Hardware landscape 270° rotation
+ * Hardware landscape (2560x1440) → Software portrait (1440x2560) with 270° rotation
  */
 export const getMaxPortraitCanvasSize = () => {
-  // MAKSIMALIN: Hardware landscape (2560x1440) → Software portrait (1440x2560)
-  // Rotate 90° untuk dapat max resolution
-  
+  // 270° rotation: landscape width → portrait height, but rotated 270°
   const hardwareLandscapeWidth = 2560;  // Brio max width
   const hardwareLandscapeHeight = 1440; // Brio max height
   
-  // ROTATE: landscape width jadi portrait height!
-  const portraitWidth = hardwareLandscapeHeight;   // 1440 (dari height landscape)
-  const portraitHeight = hardwareLandscapeWidth;   // 2560 (dari width landscape)
+  // 270° ROTATION: Different from 90°
+  const portraitWidth = hardwareLandscapeHeight;   // 1440 
+  const portraitHeight = hardwareLandscapeWidth;   // 2560
   
-  // Enhanced device capability detection untuk Android TV/Box
+  // Enhanced device capability detection
   const isAndroidTV = /Android.*TV|Android.*Box/i.test(navigator.userAgent);
   const isKhadas = /Khadas/i.test(navigator.userAgent) || /RK3588|RK3576/i.test(navigator.userAgent);
   const hasHighDPR = window.devicePixelRatio >= 1.5;
@@ -29,23 +27,20 @@ export const getMaxPortraitCanvasSize = () => {
   const hasGoodMemory = (navigator as any).deviceMemory >= 4 || !('deviceMemory' in navigator);
   const hasGoodCores = navigator.hardwareConcurrency >= 6;
   
-  // Device dianggap capable jika salah satu kondisi terpenuhi
   const deviceCanHandle4K = isAndroidTV || isKhadas || has4KScreen || (hasHighDPR && hasGoodMemory && hasGoodCores);
   
   let finalWidth, finalHeight;
   
   if (deviceCanHandle4K) {
-    // Device kuat: pakai full rotated resolution
     finalWidth = portraitWidth;   // 1440
     finalHeight = portraitHeight; // 2560
   } else {
-    // Device lemah: scale down tapi tetap maintain aspect ratio
-    const scaleFactor = 0.75; // 75% dari max
+    const scaleFactor = 0.75;
     finalWidth = Math.round(portraitWidth * scaleFactor);   // ~1080
     finalHeight = Math.round(portraitHeight * scaleFactor); // ~1920
   }
   
-  console.log('🎯 MAX Portrait Canvas:', {
+  console.log('🎯 270° Portrait Canvas:', {
     device: {
       userAgent: navigator.userAgent.includes('Khadas') ? 'Khadas Edge 2 Pro' : 'Unknown',
       isAndroidTV,
@@ -56,12 +51,12 @@ export const getMaxPortraitCanvasSize = () => {
       hasGoodCores: `${navigator.hardwareConcurrency} cores`
     },
     hardwareLandscape: `${hardwareLandscapeWidth}x${hardwareLandscapeHeight}`,
-    rotatedPortrait: `${portraitWidth}x${portraitHeight}`,
+    rotation270Portrait: `${portraitWidth}x${portraitHeight}`,
     deviceCanHandle4K,
     final: `${finalWidth}x${finalHeight}`,
-    flow: 'Hardware 2560x1440 → Rotated 1440x2560',
+    flow: 'Hardware 2560x1440 → 270° Rotated 1440x2560',
     qualityGain: `${((finalWidth * finalHeight) / (1080 * 1920) * 100).toFixed(0)}% vs 1080p`,
-    forceMaxQuality: deviceCanHandle4K ? 'YES - MAX QUALITY' : 'NO - SCALED'
+    rotationMode: '270° ROTATION'
   });
   
   return {
@@ -69,13 +64,13 @@ export const getMaxPortraitCanvasSize = () => {
     height: finalHeight,
     isMaxQuality: deviceCanHandle4K,
     sourceResolution: `${hardwareLandscapeWidth}x${hardwareLandscapeHeight}`,
-    rotatedResolution: `${portraitWidth}x${portraitHeight}`
+    rotatedResolution: `${portraitWidth}x${portraitHeight}`,
+    rotationDegrees: 270
   };
 };
 
 /**
- * MAKSIMAL Portrait Camera Kit config
- * Flow: Brio 2560x1440 landscape → Camera Kit 1440x2560 portrait (ROTATED!)
+ * 270° Portrait Camera Kit config
  */
 export const createMaxPortraitCameraKitConfig = (): CameraKitConfig => {
   const canvasSize = getMaxPortraitCanvasSize();
@@ -85,10 +80,10 @@ export const createMaxPortraitCameraKitConfig = (): CameraKitConfig => {
     lensId: LENS_ID,
     lensGroupId: LENS_GROUP_ID,
     
-    // MAKSIMAL portrait canvas - rotated dari hardware landscape
+    // 270° portrait canvas
     canvas: {
-      width: canvasSize.width,   // 1440 (max quality) atau 1080 (scaled)
-      height: canvasSize.height  // 2560 (max quality) atau 1920 (scaled)
+      width: canvasSize.width,   
+      height: canvasSize.height  
     },
     
     // Camera request tetap landscape (hardware optimal)
@@ -107,7 +102,7 @@ export const createMaxPortraitCameraKitConfig = (): CameraKitConfig => {
   };
 };
 
-// Hardware camera constraints - ALWAYS landscape untuk Brio
+// Hardware camera constraints - ALWAYS landscape
 export const getBrioOptimalConstraints = (
   facingMode: 'user' | 'environment' = 'user'
 ): MediaStreamConstraints => {
@@ -129,23 +124,23 @@ export const getBrioOptimalConstraints = (
   };
 };
 
-// Portrait display config
+// Portrait display config with 270° rotation
 export const getPortraitDisplayConfig = () => ({
   canvas: {
-    aspectRatio: 9 / 16, // Always portrait
+    aspectRatio: 9 / 16, // Portrait
     objectFit: 'cover' as const,
-    objectPosition: 'center' as const
+    objectPosition: 'center' as const,
+    rotation: 270 // 270° rotation flag
   },
   
-  // CSS for responsive portrait display
   css: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    objectPosition: 'center'
+    objectPosition: 'center',
+    transform: 'rotate(270deg)' // CSS 270° rotation if needed
   },
   
-  // Container style untuk mobile
   container: {
     position: 'relative',
     width: '100vw',
@@ -160,20 +155,20 @@ export const validateConfig = (): boolean => {
   const config = createMaxPortraitCameraKitConfig();
   
   if (import.meta.env.MODE === 'development') {
-    console.log('🔧 MAX Portrait Camera Kit Config:', {
+    console.log('🔧 270° Portrait Camera Kit Config:', {
       hasApiToken: !!config.apiToken,
       lensId: config.lensId,
       lensGroupId: config.lensGroupId,
       canvasRes: `${config.canvas.width}x${config.canvas.height}`,
       aspectRatio: (config.canvas.width / config.canvas.height).toFixed(2),
-      flow: 'Landscape Hardware → Portrait Software',
+      flow: 'Landscape Hardware → 270° Portrait Software',
       environment: import.meta.env.MODE
     });
   }
   
   // Validate portrait aspect ratio
   const aspectRatio = config.canvas.width / config.canvas.height;
-  if (aspectRatio > 0.6) { // Should be around 0.56 for 9:16
+  if (aspectRatio > 0.6) {
     console.warn('⚠️ Canvas not portrait aspect ratio:', aspectRatio);
   }
   
@@ -192,6 +187,6 @@ export const validateConfig = (): boolean => {
   return true;
 };
 
-// Export dengan nama yang tepat
+// Export aliases
 export const createAdaptiveCameraKitConfig = createMaxPortraitCameraKitConfig;
 export const CAMERA_KIT_CONFIG = createMaxPortraitCameraKitConfig();
