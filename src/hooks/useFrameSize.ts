@@ -56,12 +56,12 @@ export const useFrameSize = () => {
         percentage: '80%'
       },
       max: {
-        width: 'min(100vh * 9/16, 95vw)',
-        height: 'min(100vw * 16/9, 95vh)',
-        maxWidth: '855px',   // 95% of 900
-        maxHeight: '1520px', // 95% of 1600
-        label: 'Maximum (95%)',
-        percentage: '95%'
+        width: 'min(100vh * 9/16, 100vw)',
+        height: 'min(100vw * 16/9, 100vh)',
+        maxWidth: '1440px',  // Full monitor width
+        maxHeight: '2560px', // Full monitor height
+        label: 'Maximum (Full Screen)',
+        percentage: '100%'
       }
     };
 
