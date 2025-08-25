@@ -219,14 +219,14 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           displayWidth = containerRect.height * canvasAspect;
         }
         
-        // Canvas dengan rotasi 180°
+        // Canvas positioning tanpa rotate UI
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
           left: 50%;
           width: ${displayWidth}px;
           height: ${displayHeight}px;
-          transform: translate(-50%, -50%) rotate(180deg);
+          transform: translate(-50%, -50%);
           object-fit: contain;
           object-position: center;
           background: transparent;
@@ -234,6 +234,15 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           will-change: transform;
           backface-visibility: hidden;
         `;
+        
+        // Rotate hanya texture canvas dengan context
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.save();
+          ctx.translate(canvas.width/2, canvas.height/2);
+          ctx.rotate(Math.PI); // 180 degrees
+          ctx.translate(-canvas.width/2, -canvas.height/2);
+        }
         
         containerReference.current.style.cssText = `
           position: relative;
