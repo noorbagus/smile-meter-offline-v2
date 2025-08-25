@@ -484,16 +484,15 @@ const CameraApp: React.FC = () => {
         />
       )}
 
-      <SettingsPanel
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        debugLogs={debugLogs}
-        onExportLogs={exportLogs}
-        currentStream={getStream()}
-        canvas={getCanvas()}
-        containerRef={cameraFeedRef}
-        addLog={addLog}
-      />
+  <SettingsPanel
+    isOpen={showSettings}
+    onClose={() => setShowSettings(false)}
+    debugLogs={debugLogs}
+    onExportLogs={exportLogs}
+    currentStream={getStream()}
+    canvas={getCanvas()}
+    containerRef={cameraFeedRef}
+  />
 
       <RenderingModal
         isOpen={showRenderingModal && !showPreview}

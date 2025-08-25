@@ -1,7 +1,8 @@
-// src/components/settings/SettingsPanel.tsx - Without Push2Web
+// src/components/settings/SettingsPanel.tsx - Complete with frame size control
 import React, { useState, useEffect } from 'react';
 import { X, Download } from 'lucide-react';
 import { detectAndroid } from '../../utils/androidRecorderFix';
+import { useFrameSize, FrameSize } from '../../hooks/useFrameSize';
 
 interface CameraCapability {
   front: { width: number; height: number; fps: number } | null;
@@ -31,7 +32,6 @@ interface SettingsPanelProps {
   currentStream?: MediaStream | null;
   canvas?: HTMLCanvasElement | null;
   containerRef?: React.RefObject<HTMLDivElement>;
-  addLog: (message: string) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -41,9 +41,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onExportLogs,
   currentStream,
   canvas,
-  containerRef,
-  addLog
+  containerRef
 }) => {
+  const { frameSize, updateFrameSize, getFrameDimensions } = useFrameSize();
+  
   const [cameraCapability, setCameraCapability] = useState<CameraCapability>({
     front: null,
     back: null,
@@ -249,16 +250,51 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </p>
           </div>
 
+          {/* Fullscreen Frame Size Control */}
+          <div className="text-white/80 text-sm">
+            <p className="mb-2 font-medium flex items-center gap-1">
+              <span className="text-purple-400">📱</span> Fullscreen Frame Size:
+            </p>
+            <div className="space-y-2">
+              {(['small', 'medium', 'large', 'max'] as FrameSize[]).map((size) => {
+                const dims = getFrameDimensions(size);
+                const isSelected = frameSize === size;
+                
+                return (
+                  <button
+                    key={size}
+                    onClick={() => updateFrameSize(size)}
+                    className={`w-full text-left px-3 py-2 rounded transition-colors ${
+                      isSelected 
+                        ? 'bg-purple-500/30 border border-purple-500/50 text-purple-200' 
+                        : 'bg-black/20 hover:bg-black/40 text-white/60'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{dims.label}</span>
+                      <span className="text-xs opacity-70">{dims.maxWidth}×{dims.maxHeight}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-xs text-white/60 bg-black/20 p-3 rounded mt-2">
+              <p><strong>Current:</strong> {getFrameDimensions(frameSize).label}</p>
+              <p>Applies when entering fullscreen mode</p>
+              <p>Prevents content stretching on large displays</p>
+            </div>
+          </div>
+
           {/* Monitor Capability */}
           <div className="text-white/80 text-sm">
             <p className="mb-2 font-medium flex items-center gap-1">
               <span className="text-blue-400">🖥️</span> Monitor Capability:
             </p>
             <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
-              <p>Physical: {window.screen.width}x{window.screen.height} (DPR: {window.devicePixelRatio})</p>
-              <p>Actual Pixels: {Math.round(window.screen.width * window.devicePixelRatio)}x{Math.round(window.screen.height * window.devicePixelRatio)}</p>
+              <p>Physical: {window.screen.width}×{window.screen.height} (DPR: {window.devicePixelRatio})</p>
+              <p>Actual Pixels: {Math.round(window.screen.width * window.devicePixelRatio)}×{Math.round(window.screen.height * window.devicePixelRatio)}</p>
               <p>Color Depth: {window.screen.colorDepth}-bit</p>
-              <p>Available: {window.screen.availWidth}x{window.screen.availHeight}</p>
+              <p>Available: {window.screen.availWidth}×{window.screen.availHeight}</p>
             </div>
           </div>
 
@@ -269,11 +305,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </p>
             <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
               <p>Front: {cameraCapability.front ? 
-                `${cameraCapability.front.width}x${cameraCapability.front.height}@${cameraCapability.front.fps}fps` : 
+                `${cameraCapability.front.width}×${cameraCapability.front.height}@${cameraCapability.front.fps}fps` : 
                 'Not available'
               }</p>
               <p>Back: {cameraCapability.back ? 
-                `${cameraCapability.back.width}x${cameraCapability.back.height}@${cameraCapability.back.fps}fps` : 
+                `${cameraCapability.back.width}×${cameraCapability.back.height}@${cameraCapability.back.fps}fps` : 
                 'Not available'
               }</p>
               <p>Constraints: {cameraCapability.constraintsSupported} supported</p>
@@ -290,13 +326,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <span className="text-purple-400">📱</span> Current Display:
             </p>
             <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
-              <p>Viewport: {displayInfo.viewport.width}x{displayInfo.viewport.height}</p>
+              <p>Viewport: {displayInfo.viewport.width}×{displayInfo.viewport.height}</p>
               <p>Canvas: {displayInfo.canvas ? 
-                `${displayInfo.canvas.width}x${displayInfo.canvas.height} (scale: ${displayInfo.canvas.scale.toFixed(2)})` : 
+                `${displayInfo.canvas.width}×${displayInfo.canvas.height} (scale: ${displayInfo.canvas.scale.toFixed(2)})` : 
                 'Not initialized'
               }</p>
               <p>Container: {displayInfo.container ? 
-                `${displayInfo.container.width}x${displayInfo.container.height}px` : 
+                `${displayInfo.container.width}×${displayInfo.container.height}px` : 
                 'Not measured'
               }</p>
               <p>Orientation: {window.innerHeight > window.innerWidth ? 'Portrait' : 'Landscape'}</p>
@@ -310,14 +346,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </p>
             <div className="text-xs text-white/60 bg-black/20 p-3 rounded space-y-1">
               <p>Camera Input: {arInfo.cameraInput ? 
-                `${arInfo.cameraInput.width}x${arInfo.cameraInput.height}@${arInfo.cameraInput.fps}fps` : 
+                `${arInfo.cameraInput.width}×${arInfo.cameraInput.height}@${arInfo.cameraInput.fps}fps` : 
                 'No stream'
               }</p>
               <p>AR Processing: {arInfo.arProcessing ? 
-                `${arInfo.arProcessing.width}x${arInfo.arProcessing.height}` : 
+                `${arInfo.arProcessing.width}×${arInfo.arProcessing.height}` : 
                 'Not initialized'
               }</p>
-              <p>Display Output: {arInfo.displayOutput.width}x{arInfo.displayOutput.height}</p>
+              <p>Display Output: {arInfo.displayOutput.width}×{arInfo.displayOutput.height}</p>
               <p>Processing FPS: {arInfo.actualFPS || 'Unknown'}</p>
             </div>
           </div>
