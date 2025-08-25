@@ -35,8 +35,9 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
     // Define SDK init callback
     window.snapKitInit = () => {
       addLog?.('✅ Snap SDK loaded');
+      addLog?.(`🔍 SDK object: ${JSON.stringify(Object.keys(window.snap || {}))}`);
       setIsSDKReady(true);
-      mountButton();
+      setTimeout(mountButton, 100); // Delay mounting
     };
 
     // Load official SDK
@@ -88,29 +89,36 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
           addLog?.('🔄 Login callback triggered');
           
           try {
+            addLog?.('⏳ Waiting 500ms before fetchUserInfo...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
             addLog?.('📡 Calling fetchUserInfo...');
             const result = await window.snap!.loginkit.fetchUserInfo();
             
-            addLog?.(`📋 Raw result: ${JSON.stringify(result)}`);
+            addLog?.(`📋 fetchUserInfo success: ${JSON.stringify(result, null, 2)}`);
             
             if (!result || !result.data || !result.data.me) {
-              throw new Error('Invalid user info response');
+              throw new Error('Invalid user info response structure');
             }
             
             const userInfo = result.data.me;
-            addLog?.(`✅ User: ${userInfo.displayName || 'Unknown'}`);
+            addLog?.(`✅ User: ${userInfo.displayName || 'Unknown'} (${userInfo.externalId})`);
             
             const mockToken = `snap_${userInfo.externalId || Date.now()}_${Date.now()}`;
             onLogin(mockToken, userInfo);
             
           } catch (err: any) {
-            addLog?.(`❌ Error details: ${JSON.stringify(err)}`);
-            addLog?.(`❌ Error name: ${err?.name}`);
-            addLog?.(`❌ Error message: ${err?.message}`);
+            addLog?.(`❌ Full error object: ${JSON.stringify(err, Object.getOwnPropertyNames(err))}`);
             
-            const message = `fetchUserInfo failed: ${err?.message || 'Unknown error'}`;
-            setError(message);
-            onError?.(message);
+            // Try alternative approach - check if user is actually logged in
+            if (err?.message?.includes('not logged in') || err?.status === 401) {
+              addLog?.('⚠️ User not properly authenticated - redirect to auth flow');
+              setError('Please complete Snapchat authentication');
+            } else {
+              const message = `fetchUserInfo failed: ${err?.message || err || 'Unknown error'}`;
+              setError(message);
+              onError?.(message);
+            }
           } finally {
             setIsLoading(false);
           }
@@ -127,10 +135,14 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
   return (
     <div className="space-y-4">
       <div id="snap-login-button" className="min-h-[44px]">
-        {!isSDKReady && (
+        {!isSDKReady ? (
           <div className="flex items-center justify-center p-3 bg-gray-600 rounded-lg">
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
             <span className="text-white text-sm">Loading Snapchat SDK...</span>
+          </div>
+        ) : (
+          <div className="p-3 bg-green-600/20 rounded-lg">
+            <span className="text-green-300 text-sm">SDK Ready - Button should appear here</span>
           </div>
         )}
       </div>
