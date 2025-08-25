@@ -205,44 +205,21 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         outputCanvasRef.current = canvas;
         addLog(`📊 Canvas: ${canvas.width}x${canvas.height}`);
         
-        // Perfect fit calculations
-        const containerRect = containerReference.current.getBoundingClientRect();
-        const canvasAspect = canvas.width / canvas.height;
-        const containerAspect = containerRect.width / containerRect.height;
-        
-        let displayWidth, displayHeight;
-        if (canvasAspect > containerAspect) {
-          displayWidth = containerRect.width;
-          displayHeight = containerRect.width / canvasAspect;
-        } else {
-          displayHeight = containerRect.height;
-          displayWidth = containerRect.height * canvasAspect;
-        }
-        
-        // Canvas positioning tanpa rotate UI
+        // Force full screen cover - no black bars
         canvas.style.cssText = `
           position: absolute;
-          top: 50%;
-          left: 50%;
-          width: ${displayWidth}px;
-          height: ${displayHeight}px;
-          transform: translate(-50%, -50%);
-          object-fit: contain;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          transform: rotate(180deg);
+          object-fit: cover;
           object-position: center;
           background: transparent;
           image-rendering: crisp-edges;
           will-change: transform;
           backface-visibility: hidden;
         `;
-        
-        // Rotate hanya texture canvas dengan context
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.save();
-          ctx.translate(canvas.width/2, canvas.height/2);
-          ctx.rotate(Math.PI); // 180 degrees
-          ctx.translate(-canvas.width/2, -canvas.height/2);
-        }
         
         containerReference.current.style.cssText = `
           position: relative;
@@ -260,9 +237,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           containerReference.current.appendChild(canvas);
           isAttachedRef.current = true;
           
-          const scaleX = displayWidth / canvas.width;
-          const scaleY = displayHeight / canvas.height;
-          addLog(`✅ Canvas attached with 180° rotation - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
+          addLog(`✅ Canvas attached with 180° rotation and full screen cover`);
         } catch (e) {
           addLog(`❌ Attachment failed: ${e}`);
         }
