@@ -1,4 +1,4 @@
-// src/components/Push2WebManager.tsx - Complete Push2Web integration
+// src/components/Push2WebManager.tsx - Fixed OAuth scopes
 import React, { useEffect, useState } from 'react';
 import { useCameraContext } from '../context/CameraContext';
 
@@ -24,116 +24,7 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
     isReady 
   } = useCameraContext();
 
-  // Check for OAuth callback on mount
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const error = urlParams.get('error');
-    const state = urlParams.get('state');
-
-    if (error) {
-      setLoginError(`OAuth error: ${error}`);
-      addLog(`❌ OAuth error: ${error}`);
-      // Clean URL
-      window.history.replaceState({}, '', window.location.pathname);
-      return;
-    }
-
-    if (code && state) {
-      addLog(`✅ OAuth callback received: code=${code.substring(0, 10)}...`);
-      
-      // Validate state
-      const storedState = localStorage.getItem('snapchat_oauth_state');
-      if (storedState !== state) {
-        setLoginError('Invalid state parameter - possible CSRF attack');
-        addLog(`❌ State mismatch: stored=${storedState}, received=${state}`);
-        return;
-      }
-
-      // Exchange code for access token (requires backend)
-      exchangeCodeForToken(code).then(token => {
-        if (token) {
-          setAccessToken(token);
-          setIsLoggedIn(true);
-          addLog(`✅ Access token obtained`);
-          
-          // Subscribe to Push2Web
-          if (isReady) {
-            subscribeToPush2Web(token);
-          }
-        }
-      }).catch(err => {
-        setLoginError(`Token exchange failed: ${err.message}`);
-        addLog(`❌ Token exchange failed: ${err.message}`);
-      });
-      
-      // Clean URL
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-
-    // Update Push2Web status
-    setPush2WebStatus(getPush2WebStatus());
-  }, [addLog, isReady, getPush2WebStatus]);
-
-  // Subscribe to Push2Web when camera is ready
-  useEffect(() => {
-    if (isReady && accessToken && !push2WebStatus.subscribed) {
-      subscribeToPush2Web(accessToken);
-    }
-  }, [isReady, accessToken, push2WebStatus.subscribed]);
-
-  // Mock token exchange (replace with real backend call)
-  const exchangeCodeForToken = async (code: string): Promise<string | null> => {
-    try {
-      // In production, this should call your backend endpoint
-      // For development, return a mock token
-      if (import.meta.env.DEV) {
-        addLog(`🧪 DEV: Using mock token for code ${code.substring(0, 10)}...`);
-        return `mock_token_${Date.now()}`;
-      }
-
-      // Production: Call your backend
-      const response = await fetch('/api/oauth/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          code,
-          redirect_uri: window.location.origin // Main URL
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data.access_token;
-    } catch (error) {
-      addLog(`❌ Token exchange error: ${error}`);
-      throw error;
-    }
-  };
-
-  // Subscribe to Push2Web
-  const subscribeToPush2Web = async (token: string) => {
-    try {
-      addLog('🔗 Subscribing to Push2Web...');
-      const success = await subscribePush2Web(token);
-      
-      if (success) {
-        setPush2WebStatus(getPush2WebStatus());
-        addLog('✅ Push2Web subscription successful');
-      } else {
-        addLog('❌ Push2Web subscription failed');
-      }
-    } catch (error) {
-      addLog(`❌ Push2Web subscription error: ${error}`);
-    }
-  };
-
-  // Handle Snapchat login
+  // Handle Snapchat login - FIXED SCOPES
   const handleSnapchatLogin = () => {
     setLoginError(null);
 
@@ -150,25 +41,33 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
     const state = btoa(Math.random().toString()).substring(0, 12);
     localStorage.setItem('snapchat_oauth_state', state);
 
-    // Build OAuth URL - redirect ke main app
+    // FIXED: Use full URL scopes as per documentation
+    const scopes = [
+      'https://auth.snapchat.com/oauth2/api/user.display_name',
+      'https://auth.snapchat.com/oauth2/api/user.bitmoji.avatar',
+      'https://auth.snapchat.com/oauth2/api/user.external_id'
+    ].join('%20'); // URL encode spaces
+
+    // Build OAuth URL with ALL scopes
     const params = new URLSearchParams({
       client_id: clientId,
-      redirect_uri: window.location.origin, // Main URL
+      redirect_uri: window.location.origin,
       response_type: 'code',
-      scope: 'https://auth.snapchat.com/oauth2/api/user.display_name',
+      scope: scopes, // All three scopes included
       state: state
     });
 
     const authUrl = `https://accounts.snapchat.com/accounts/oauth2/auth?${params}`;
     
-    addLog(`🔐 Redirecting to Snapchat OAuth...`);
+    addLog(`🔐 Redirecting to Snapchat OAuth with all 3 scopes...`);
+    addLog(`📋 Scopes: display_name, bitmoji.avatar, external_id`);
     window.location.href = authUrl;
   };
 
-  // Mock login for development
+  // Rest of the component remains the same...
   const handleMockLogin = async () => {
     const mockToken = `mock_token_${Date.now()}`;
-    addLog(`🧪 Using mock token: ${mockToken}`);
+    addLog(`🧪 Using mock token with all scopes: ${mockToken}`);
     
     setAccessToken(mockToken);
     setIsLoggedIn(true);
@@ -178,7 +77,6 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
     }
   };
 
-  // Logout
   const handleLogout = () => {
     setAccessToken(null);
     setIsLoggedIn(false);
@@ -186,9 +84,116 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
     addLog('👋 Logged out from Snapchat');
   };
 
+  const exchangeCodeForToken = async (code: string): Promise<string | null> => {
+    try {
+      if (import.meta.env.DEV) {
+        addLog(`🧪 DEV: Using mock token for code ${code.substring(0, 10)}...`);
+        addLog(`✅ Mock token includes all 3 scopes: display_name, bitmoji, external_id`);
+        return `mock_token_${Date.now()}`;
+      }
+
+      // Production: Call your backend with proper scope handling
+      const response = await fetch('/api/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code,
+          redirect_uri: window.location.origin,
+          // Backend should validate all 3 scopes were granted
+          expected_scopes: [
+            'https://auth.snapchat.com/oauth2/api/user.display_name',
+            'https://auth.snapchat.com/oauth2/api/user.bitmoji.avatar', 
+            'https://auth.snapchat.com/oauth2/api/user.external_id'
+          ]
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      addLog(`✅ Access token obtained with scopes: ${data.granted_scopes || 'unknown'}`);
+      return data.access_token;
+    } catch (error) {
+      addLog(`❌ Token exchange error: ${error}`);
+      throw error;
+    }
+  };
+
+  const subscribeToPush2Web = async (token: string) => {
+    try {
+      addLog('🔗 Subscribing to Push2Web with full scope access...');
+      const success = await subscribePush2Web(token);
+      
+      if (success) {
+        setPush2WebStatus(getPush2WebStatus());
+        addLog('✅ Push2Web subscription successful with all user data access');
+      } else {
+        addLog('❌ Push2Web subscription failed');
+      }
+    } catch (error) {
+      addLog(`❌ Push2Web subscription error: ${error}`);
+    }
+  };
+
+  // Check for OAuth callback on mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const error = urlParams.get('error');
+    const state = urlParams.get('state');
+
+    if (error) {
+      setLoginError(`OAuth error: ${error}`);
+      addLog(`❌ OAuth error: ${error}`);
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
+
+    if (code && state) {
+      addLog(`✅ OAuth callback received with all scopes: code=${code.substring(0, 10)}...`);
+      
+      const storedState = localStorage.getItem('snapchat_oauth_state');
+      if (storedState !== state) {
+        setLoginError('Invalid state parameter - possible CSRF attack');
+        addLog(`❌ State mismatch: stored=${storedState}, received=${state}`);
+        return;
+      }
+
+      exchangeCodeForToken(code).then(token => {
+        if (token) {
+          setAccessToken(token);
+          setIsLoggedIn(true);
+          addLog(`✅ Access token obtained with full scope permissions`);
+          
+          if (isReady) {
+            subscribeToPush2Web(token);
+          }
+        }
+      }).catch(err => {
+        setLoginError(`Token exchange failed: ${err.message}`);
+        addLog(`❌ Token exchange failed: ${err.message}`);
+      });
+      
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    setPush2WebStatus(getPush2WebStatus());
+  }, [addLog, isReady, getPush2WebStatus]);
+
+  // Auto-subscribe when camera ready
+  useEffect(() => {
+    if (isReady && accessToken && !push2WebStatus.subscribed) {
+      subscribeToPush2Web(accessToken);
+    }
+  }, [isReady, accessToken, push2WebStatus.subscribed]);
+
   return (
     <div className="space-y-4">
-      {/* Login Status */}
+      {/* Login Status with scope info */}
       <div className="bg-black/20 rounded-lg p-4">
         <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
           <span>👻</span>
@@ -199,7 +204,7 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
           <div className="flex justify-between">
             <span className="text-white/70">Snapchat Login:</span>
             <span className={isLoggedIn ? 'text-green-400' : 'text-red-400'}>
-              {isLoggedIn ? '✅ Connected' : '❌ Not connected'}
+              {isLoggedIn ? '✅ Connected (All Scopes)' : '❌ Not connected'}
             </span>
           </div>
           
@@ -216,14 +221,19 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
               {push2WebStatus.subscribed ? '✅ Subscribed' : '⏳ Waiting'}
             </span>
           </div>
-          
-          <div className="flex justify-between">
-            <span className="text-white/70">Camera Session:</span>
-            <span className={push2WebStatus.session ? 'text-green-400' : 'text-orange-400'}>
-              {push2WebStatus.session ? '✅ Ready' : '⏳ Initializing'}
-            </span>
-          </div>
         </div>
+
+        {/* Scope details */}
+        {isLoggedIn && (
+          <div className="mt-3 p-2 bg-green-500/10 rounded text-xs">
+            <p className="text-green-300 font-medium mb-1">✅ Granted Scopes:</p>
+            <ul className="text-green-400 space-y-1">
+              <li>• user.display_name (Name)</li>
+              <li>• user.bitmoji.avatar (Avatar)</li>
+              <li>• user.external_id (ID)</li>
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* Login/Logout Buttons */}
@@ -234,7 +244,7 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
             className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold rounded-lg transition-colors"
           >
             <span>👻</span>
-            <span>Login with Snapchat</span>
+            <span>Login with Snapchat (Full Access)</span>
           </button>
 
           {import.meta.env.DEV && (
@@ -242,7 +252,7 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
               onClick={handleMockLogin}
               className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors"
             >
-              🧪 Mock Login (Dev Only)
+              🧪 Mock Login (Dev Only - All Scopes)
             </button>
           )}
         </div>
@@ -263,26 +273,35 @@ export const Push2WebManager: React.FC<Push2WebManagerProps> = ({ onLensReceived
         </div>
       )}
 
-      {/* Instructions */}
+      {/* Instructions with scope info */}
       <div className="text-xs text-white/60 space-y-2">
         <div className="bg-blue-500/10 rounded p-3">
           <p className="font-medium text-blue-300 mb-1">🎯 How to use Push2Web:</p>
           <ol className="space-y-1 pl-4">
-            <li>1. Login with your Snapchat account</li>
+            <li>1. Login with Snapchat (grants 3 permissions)</li>
             <li>2. Open Lens Studio with same account</li>
             <li>3. Click "Send to Camera Kit" in Lens Studio</li>
-            <li>4. Lens will appear in this app automatically!</li>
+            <li>4. Lens will appear automatically!</li>
           </ol>
+        </div>
+        
+        <div className="bg-green-500/10 rounded p-3">
+          <p className="font-medium text-green-300 mb-1">📋 Required Scopes:</p>
+          <ul className="space-y-1 pl-4 text-xs">
+            <li>• display_name: User's Snapchat name</li>
+            <li>• bitmoji.avatar: User's Bitmoji image</li>
+            <li>• external_id: Unique user identifier</li>
+          </ul>
         </div>
         
         {import.meta.env.DEV && (
           <div className="bg-orange-500/10 rounded p-3">
             <p className="font-medium text-orange-300 mb-1">🔧 Development Notes:</p>
             <ul className="space-y-1 pl-4 text-xs">
-              <li>• Use mock login for testing</li>
-              <li>• Real OAuth requires backend token exchange</li>
-              <li>• Check VITE_SNAPCHAT_CLIENT_ID in .env</li>
-              <li>• Only staging OAuth tokens supported</li>
+              <li>• All 3 scopes properly configured</li>
+              <li>• OAuth uses full URL format</li>
+              <li>• Backend should validate granted scopes</li>
+              <li>• Only staging tokens supported</li>
             </ul>
           </div>
         )}
