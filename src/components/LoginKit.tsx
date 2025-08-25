@@ -25,11 +25,18 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Check if SDK already exists
+    if (window.snap?.loginkit) {
+      setIsSDKReady(true);
+      mountLoginButton();
+      return;
+    }
+
     // Load Snap Login Kit SDK
     window.snapKitInit = () => {
       addLog?.('✅ Snap Login Kit SDK loaded');
       setIsSDKReady(true);
-      mountLoginButton();
+      setTimeout(mountLoginButton, 100); // Small delay
     };
 
     if (!document.getElementById('loginkit-sdk')) {
@@ -38,7 +45,10 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
       script.src = 'https://sdk.snapkit.com/js/v1/login.js';
       script.async = true;
       script.onload = () => addLog?.('📦 Login Kit script loaded');
-      script.onerror = () => setError('Failed to load Snap Login Kit SDK');
+      script.onerror = () => {
+        setError('Failed to load Snap Login Kit SDK');
+        addLog?.('❌ SDK script failed to load');
+      };
       document.head.appendChild(script);
     }
   }, [addLog]);
@@ -53,11 +63,19 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
     const redirectURI = import.meta.env.VITE_SNAPCHAT_REDIRECT_URI;
 
     if (!clientId || !redirectURI) {
-      setError('Missing Snapchat configuration');
+      setError(`Missing config - CLIENT_ID: ${!!clientId}, REDIRECT_URI: ${!!redirectURI}`);
       return;
     }
 
+    addLog?.(`🔧 Mounting with CLIENT_ID: ${clientId.substring(0, 10)}...`);
+
     try {
+      // Clear existing button first
+      const container = document.getElementById('snap-login-button');
+      if (container) {
+        container.innerHTML = '';
+      }
+
       window.snap.loginkit.mountButton('snap-login-button', {
         clientId: clientId,
         redirectURI: redirectURI,
@@ -72,8 +90,8 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
 
       addLog?.('✅ Login button mounted with Push2Web scopes');
     } catch (error) {
-      addLog?.(`❌ Failed to mount login button: ${error}`);
-      setError('Failed to setup login button');
+      addLog?.(`❌ Mount failed: ${error}`);
+      setError(`Mount error: ${error}`);
     }
   };
 
@@ -121,6 +139,19 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
         )}
       </div>
 
+      {/* Fallback Manual Button */}
+      {isSDKReady && !document.getElementById('snap-login-button')?.hasChildNodes() && (
+        <button
+          onClick={() => {
+            addLog?.('🔄 Manual button click - SDK ready but no button rendered');
+            mountLoginButton();
+          }}
+          className="w-full px-4 py-3 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold rounded-lg"
+        >
+          👻 Login with Snapchat (Manual)
+        </button>
+      )}
+
       {/* Loading State */}
       {isLoading && (
         <div className="p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg">
@@ -139,13 +170,29 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
         </div>
       )}
 
-      {/* Push2Web Info */}
-      <div className="text-xs text-blue-300 space-y-1 p-3 bg-blue-500/10 rounded">
-        <p><strong>🎭 Push2Web Client-Side:</strong></p>
-        <p>✅ Full URL scopes</p>
-        <p>⚠️ Extracting access token from Login Kit</p>
-        <p>⚠️ Must use staging CLIENT_ID</p>
+      {/* Always show debug info */}
+      <div className="text-xs text-white/60 space-y-1 p-3 bg-black/20 rounded">
+        <p><strong>Debug Info:</strong></p>
+        <p>• SDK Ready: {isSDKReady ? '✅' : '❌'}</p>
+        <p>• CLIENT_ID: {import.meta.env.VITE_SNAPCHAT_CLIENT_ID ? '✅ Set' : '❌ Missing'}</p>
+        <p>• REDIRECT_URI: {import.meta.env.VITE_SNAPCHAT_REDIRECT_URI ? '✅ Set' : '❌ Missing'}</p>
+        <p>• Snap SDK: {window.snap ? '✅' : '❌'}</p>
       </div>
+
+      {/* Manual Login Button */}
+      <button
+        onClick={() => {
+          addLog?.('🔄 Manual login attempt...');
+          if (!window.snap?.loginkit) {
+            setError('Snap SDK not loaded');
+            return;
+          }
+          mountLoginButton();
+        }}
+        className="w-full px-4 py-3 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold rounded-lg"
+      >
+        👻 Login with Snapchat
+      </button>
     </div>
   );
 };
