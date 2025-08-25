@@ -1,4 +1,4 @@
-// src/App.tsx - Complete with OAuth routing
+// src/App.tsx - Main app without Push2Web integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -6,8 +6,6 @@ import {
   useCameraContext, 
   useRecordingContext 
 } from './context';
-import { LoginKit } from './components/LoginKit';
-import { OAuthCallback } from './components/OAuthCallback';
 import {
   LoadingScreen,
   ErrorScreen,
@@ -22,19 +20,9 @@ import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/ins
 import { Maximize, X } from 'lucide-react';
 
 const CameraApp: React.FC = () => {
-  // Check if this is OAuth callback URL
-  if (window.location.pathname === '/oauth-callback' || window.location.hash.includes('access_token')) {
-    return <OAuthCallback />;
-  }
-
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [appReady, setAppReady] = useState<boolean>(false);
-  
-  // Push2Web state
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [showLogin, setShowLogin] = useState<boolean>(false);
   
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -61,9 +49,7 @@ const CameraApp: React.FC = () => {
     debugLogs,
     exportLogs,
     isReady,
-    restoreCameraFeed,
-    subscribePush2Web,
-    getPush2WebStatus
+    restoreCameraFeed
   } = useCameraContext();
 
   const {
@@ -82,46 +68,6 @@ const CameraApp: React.FC = () => {
     showRenderingModal,
     setShowRenderingModal
   } = useRecordingContext();
-
-  // Handle Login success
-  const handleLogin = useCallback(async (token: string) => {
-    try {
-      setAccessToken(token);
-      setIsLoggedIn(true);
-      setShowLogin(false);
-      addLog(`✅ Snapchat login successful: ${token.substring(0, 10)}...`);
-      
-      // Subscribe to Push2Web dengan access token
-      const success = await subscribePush2Web(token);
-      if (success) {
-        addLog('🎭 Push2Web subscription successful - ready to receive lenses!');
-      } else {
-        addLog('⚠️ Push2Web subscription failed');
-      }
-    } catch (error) {
-      addLog(`❌ Login handler error: ${error}`);
-    }
-  }, [addLog, subscribePush2Web]);
-
-  // Handle logout
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem('snap_access_token');
-    setAccessToken(null);
-    setIsLoggedIn(false);
-    setShowLogin(true);
-    addLog('👋 Logged out - token cleared');
-  }, [addLog]);
-
-  // Handle Login error
-  const handleLoginError = useCallback((error: string) => {
-    addLog(`❌ Login error: ${error}`);
-  }, [addLog]);
-
-  // Show Push2Web status in settings
-  const handleShowPush2WebStatus = useCallback(() => {
-    const status = getPush2WebStatus();
-    addLog(`📊 Push2Web Status: Available: ${status.available}, Subscribed: ${status.subscribed}, Session: ${status.session}, Repository: ${status.repository}`);
-  }, [addLog, getPush2WebStatus]);
 
   // Fullscreen functions
   const enterFullscreen = useCallback(async () => {
@@ -239,7 +185,7 @@ const CameraApp: React.FC = () => {
     }
   }, [addLog]);
 
-  // Fullscreen event handlers
+  // Prevent fullscreen gestures
   useEffect(() => {
     if (!isFullscreen) return;
 
@@ -276,6 +222,7 @@ const CameraApp: React.FC = () => {
     };
   }, [isFullscreen]);
 
+  // Monitor fullscreen changes
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = !!document.fullscreenElement;
@@ -303,38 +250,19 @@ const CameraApp: React.FC = () => {
 
   // Initialize app when ready
   const initializeApp = useCallback(async () => {
-    addLog(`🔍 Current camera state: ${cameraState}`);
-    
     if (cameraState === 'ready') {
-      addLog('📱 Camera ready - checking canvas attachment');
-      const canvas = getCanvas();
-      if (canvas && cameraFeedRef.current) {
-        addLog('🔄 Re-attaching canvas to container');
-        setTimeout(() => {
-          if (canvas && cameraFeedRef.current) {
-            canvas.style.display = 'block';
-            canvas.style.visibility = 'visible';
-          }
-        }, 100);
-      }
+      addLog('📱 Camera already ready');
       return;
     }
 
     try {
-      addLog('🎬 Starting Camera Kit initialization...');
+      addLog('🎬 Starting app initialization...');
       
       const hasPermission = await checkCameraPermission();
-      if (!hasPermission) {
-        addLog('❌ Camera permission check failed');
-        return;
-      }
+      if (!hasPermission) return;
 
-      addLog('🎥 Requesting camera stream...');
       const stream = await requestCameraStream(currentFacingMode, true);
-      if (!stream) {
-        addLog('❌ Failed to get camera stream');
-        return;
-      }
+      if (!stream) return;
 
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
@@ -344,17 +272,14 @@ const CameraApp: React.FC = () => {
         addLog('🔇 WARNING: No audio tracks in camera stream - recordings will be silent!');
       }
 
-      addLog('🎭 Initializing Camera Kit...');
       const success = await initializeCameraKit(stream, cameraFeedRef);
       if (success) {
-        addLog('🎉 Camera Kit initialization complete');
-      } else {
-        addLog('❌ Camera Kit initialization failed');
+        addLog('🎉 App initialization complete');
       }
     } catch (error) {
       addLog(`❌ Initialization failed: ${error}`);
     }
-  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef, getCanvas]);
+  }, [cameraState, addLog, checkCameraPermission, requestCameraStream, currentFacingMode, initializeCameraKit, cameraFeedRef]);
 
   useEffect(() => {
     if (appReady) {
@@ -363,21 +288,7 @@ const CameraApp: React.FC = () => {
     }
   }, [appReady, initializeApp, addLog]);
 
-  // Check for saved login after camera is ready
-  useEffect(() => {
-    if (isReady && !isLoggedIn) {
-      // Check saved token
-      const savedToken = localStorage.getItem('snap_access_token');
-      if (savedToken) {
-        handleLogin(savedToken);
-      } else if (!showLogin) {
-        setShowLogin(true);
-        addLog('🔒 Camera ready - showing Snapchat login for Push2Web');
-      }
-    }
-  }, [isReady, isLoggedIn, showLogin, handleLogin, addLog]);
-
-  // Other handlers
+  // Event handlers
   const handleSwitchCamera = useCallback(async () => {
     if (!isReady) return;
     
@@ -418,6 +329,18 @@ const CameraApp: React.FC = () => {
     addLog(success ? '✅ AR effect reloaded' : '❌ Failed to reload AR effect');
   }, [isReady, reloadLens, addLog]);
 
+  // Cleanup timers
+  useEffect(() => {
+    return () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+      }
+      if (exitButtonTimer) {
+        clearTimeout(exitButtonTimer);
+      }
+    };
+  }, [longPressTimer, exitButtonTimer]);
+
   // Show loading while checking/redirecting
   if (!appReady) {
     const isInInstagram = isInstagramBrowser();
@@ -442,38 +365,6 @@ const CameraApp: React.FC = () => {
             subMessage="Checking browser compatibility..."
           />
         )}
-      </div>
-    );
-  }
-
-  // Show Push2Web Login
-  if (showLogin && !isLoggedIn) {
-    return (
-      <div className="fixed inset-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-6">
-        <div className="bg-black/50 backdrop-blur-md rounded-xl p-8 max-w-sm w-full">
-          <div className="text-center mb-6">
-            <div className="text-6xl mb-4">🎭</div>
-            <h2 className="text-2xl font-bold text-white mb-2">Push2Web Ready</h2>
-            <p className="text-white/70 text-sm">Connect to Lens Studio for live lens testing</p>
-          </div>
-          
-          <LoginKit 
-            onLogin={handleLogin}
-            onError={handleLoginError}
-          />
-          
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => {
-                setShowLogin(false);
-                addLog('⏭️ Skipping Push2Web login - camera only mode');
-              }}
-              className="text-white/60 hover:text-white text-sm transition-colors"
-            >
-              Skip and use Camera only
-            </button>
-          </div>
-        </div>
       </div>
     );
   }
@@ -531,10 +422,7 @@ const CameraApp: React.FC = () => {
       />
 
       <CameraControls
-        onSettings={() => {
-          setShowSettings(true);
-          handleShowPush2WebStatus();
-        }}
+        onSettings={() => setShowSettings(true)}
         onFlip={() => setIsFlipped(!isFlipped)}
         isFullscreen={isFullscreen}
       />
@@ -548,25 +436,6 @@ const CameraApp: React.FC = () => {
         formatTime={formatTime}
         disabled={!isReady}
       />
-
-      {/* Push2Web Status Indicator with Logout */}
-      {isLoggedIn && (
-        <div className="absolute top-16 left-4 z-20">
-          <div className="bg-green-500/20 backdrop-blur-sm border border-green-500/30 rounded-lg px-3 py-1 flex items-center space-x-2">
-            <div className="text-green-300 text-xs font-medium flex items-center space-x-1">
-              <span>🎭</span>
-              <span>Push2Web Ready</span>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="text-red-300 hover:text-red-200 text-xs ml-2"
-              title="Logout"
-            >
-              ↗
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Fullscreen buttons */}
       {!isFullscreen && isReady && (
@@ -623,8 +492,6 @@ const CameraApp: React.FC = () => {
         currentStream={getStream()}
         canvas={getCanvas()}
         containerRef={cameraFeedRef}
-        subscribePush2Web={subscribePush2Web}
-        getPush2WebStatus={getPush2WebStatus}
         addLog={addLog}
       />
 
