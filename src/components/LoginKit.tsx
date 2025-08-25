@@ -55,17 +55,26 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
   }, [addLog]);
 
   const mountButton = () => {
-    if (!window.snap?.loginkit) return;
+    addLog?.(`🔧 Attempting to mount button...`);
+    
+    if (!window.snap?.loginkit) {
+      addLog?.('❌ Snap SDK not available');
+      return;
+    }
 
     const clientId = import.meta.env.VITE_SNAPCHAT_CLIENT_ID;
     const redirectURI = import.meta.env.VITE_SNAPCHAT_REDIRECT_URI;
+    
+    addLog?.(`🔑 ClientID: ${clientId ? 'present' : 'missing'}`);
+    addLog?.(`🔗 RedirectURI: ${redirectURI || 'missing'}`);
 
     if (!clientId || !redirectURI) {
-      setError('Missing Snapchat config');
+      setError('Missing CLIENT_ID or REDIRECT_URI');
       return;
     }
 
     try {
+      addLog?.(`📍 Mounting to element: snap-login-button`);
       window.snap.loginkit.mountButton('snap-login-button', {
         clientId,
         redirectURI,
@@ -76,17 +85,30 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
         ],
         handleResponseCallback: async () => {
           setIsLoading(true);
+          addLog?.('🔄 Login callback triggered');
+          
           try {
+            addLog?.('📡 Calling fetchUserInfo...');
             const result = await window.snap!.loginkit.fetchUserInfo();
+            
+            addLog?.(`📋 Raw result: ${JSON.stringify(result)}`);
+            
+            if (!result || !result.data || !result.data.me) {
+              throw new Error('Invalid user info response');
+            }
+            
             const userInfo = result.data.me;
+            addLog?.(`✅ User: ${userInfo.displayName || 'Unknown'}`);
             
-            addLog?.(`✅ Login success: ${userInfo.displayName}`);
-            
-            // For Push2Web, we need actual access token from backend
-            const mockToken = `snap_${userInfo.externalId}_${Date.now()}`;
+            const mockToken = `snap_${userInfo.externalId || Date.now()}_${Date.now()}`;
             onLogin(mockToken, userInfo);
-          } catch (err) {
-            const message = `Login failed: ${err}`;
+            
+          } catch (err: any) {
+            addLog?.(`❌ Error details: ${JSON.stringify(err)}`);
+            addLog?.(`❌ Error name: ${err?.name}`);
+            addLog?.(`❌ Error message: ${err?.message}`);
+            
+            const message = `fetchUserInfo failed: ${err?.message || 'Unknown error'}`;
             setError(message);
             onError?.(message);
           } finally {
@@ -95,9 +117,10 @@ export const LoginKit: React.FC<LoginKitProps> = ({ onLogin, onError, addLog }) 
         }
       });
       
-      addLog?.('🔘 Login button mounted');
-    } catch (err) {
-      setError('Failed to mount login button');
+      addLog?.(`✅ Button mount successful`);
+    } catch (err: any) {
+      addLog?.(`❌ Mount failed: ${JSON.stringify(err)}`);
+      setError(`Mount failed: ${err}`);
     }
   };
 
