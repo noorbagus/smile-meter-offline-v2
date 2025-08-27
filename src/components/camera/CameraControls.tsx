@@ -32,7 +32,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
           
           <div className="text-white text-center">
             {detectAndroid() && (
-              
+              <div className="text-responsive-xs text-green-400"></div>
             )}
           </div>
           
