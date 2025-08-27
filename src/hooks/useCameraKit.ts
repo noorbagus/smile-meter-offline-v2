@@ -1,7 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { Push2Web } from '@snap/push2web';
 import { validateConfig } from '../config/cameraKit';
+import { VideoRotationUtil, shouldRotateCamera } from '../utils/videoRotationUtil';
 import type { CameraState } from './useCameraPermissions';
 
 let cameraKitInstance: any = null;
@@ -63,7 +64,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
   const isInitializedRef = useRef<boolean>(false);
   const currentConfigRef = useRef<any>(null);
   const push2WebSubscriptionRef = useRef<any>(null);
+  const videoRotatorRef = useRef<VideoRotationUtil | null>(null);
 
+  // Push2Web methods
   const subscribePush2Web = useCallback(async (accessToken: string): Promise<boolean> => {
     if (!push2WebInstance || !sessionRef.current || !cameraKitInstance) {
       addLog('❌ Push2Web not ready');
@@ -74,7 +77,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       addLog('🔗 Subscribing to Push2Web...');
       
       push2WebInstance.events.addEventListener('lensReceived', (event: any) => {
-        const { id, name, iconUrl, cameraFacingPreference } = event.detail;
+        const { id, name } = event.detail;
         addLog(`📡 Lens received: ${name} (${id})`);
       });
 
@@ -109,6 +112,26 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       repository: !!lensRepositoryRef.current
     };
   }, []);
+
+  // Stream processing with rotation
+  const processStream = useCallback(async (
+    inputStream: MediaStream, 
+    facingMode: 'user' | 'environment'
+  ): Promise<MediaStream> => {
+    let processedStream = inputStream;
+    
+    // Apply rotation if needed
+    if (shouldRotateCamera()) {
+      if (videoRotatorRef.current) {
+        videoRotatorRef.current.stop();
+      }
+      videoRotatorRef.current = new VideoRotationUtil();
+      processedStream = await videoRotatorRef.current.rotateStream(inputStream, -90);
+      addLog('🔄 Camera stream rotated -90° before Camera Kit');
+    }
+    
+    return processedStream;
+  }, [addLog]);
 
   const attachCameraOutput = useCallback((
     canvas: HTMLCanvasElement, 
@@ -153,7 +176,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           left: 50%;
           width: ${displayWidth}px;
           height: ${displayHeight}px;
-          transform: translate(-50%, -50%) rotate(-90deg);
+          transform: translate(-50%, -50%);
           object-fit: contain;
           object-position: center;
           background: transparent;
@@ -228,11 +251,13 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       };
       currentConfigRef.current = adaptiveConfig;
       
+      // Update existing session
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Updating existing session...');
         
-        // Mirror untuk front camera, tanpa rotasi di Transform2D
-        const source = createMediaStreamSource(stream, {
+        const processedStream = await processStream(stream, currentFacingMode);
+        
+        const source = createMediaStreamSource(processedStream, {
           transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
           cameraType: currentFacingMode
         });
@@ -251,10 +276,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           }, 100);
         }
         
-        addLog('✅ Stream updated with -90° rotation');
+        addLog('✅ Stream updated with rotation support');
         return true;
       }
 
+      // Initialize new session
       addLog('🎭 Initializing Camera Kit with Push2Web + Rotation...');
       setCameraState('initializing');
       containerRef.current = containerReference;
@@ -276,8 +302,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
-      // Mirror untuk front camera, tanpa rotasi di Transform2D
-      const source = createMediaStreamSource(stream, {
+      // Process stream with rotation
+      const processedStream = await processStream(stream, currentFacingMode);
+
+      const source = createMediaStreamSource(processedStream, {
         transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
         cameraType: currentFacingMode
       });
@@ -285,6 +313,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       await withTimeout(session.setSource(source), 3000);
       await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
 
+      // Load lenses
       if (!lensRepositoryRef.current) {
         try {
           const lensResult: any = await withTimeout(
@@ -298,6 +327,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         }
       }
 
+      // Apply default lens
       const lenses = lensRepositoryRef.current;
       if (lenses && lenses.length > 0) {
         try {
@@ -318,7 +348,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Camera Kit ready with -90° rotation');
+      addLog('🎉 Camera Kit ready with rotation support');
 
       return true;
 
@@ -328,7 +358,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       setCameraState('error');
       return false;
     }
-  }, [currentFacingMode, addLog, attachCameraOutput, cameraState]);
+  }, [currentFacingMode, addLog, attachCameraOutput, cameraState, processStream]);
 
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
     if (!isInitializedRef.current || !sessionRef.current) {
@@ -351,8 +381,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         audio: true
       });
 
-      // Mirror untuk front camera, tanpa rotasi di Transform2D  
-      const source = createMediaStreamSource(stream, {
+      // Process stream with rotation
+      const processedStream = await processStream(stream, newFacingMode);
+
+      const source = createMediaStreamSource(processedStream, {
         transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
         cameraType: newFacingMode
       });
@@ -366,14 +398,14 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       streamRef.current = stream;
       setCurrentFacingMode(newFacingMode);
       
-      addLog(`✅ Switched to ${newFacingMode} camera with -90° rotation`);
+      addLog(`✅ Switched to ${newFacingMode} camera with rotation support`);
       return stream;
 
     } catch (error) {
       addLog(`❌ Camera switch failed: ${error}`);
       return null;
     }
-  }, [currentFacingMode, addLog]);
+  }, [currentFacingMode, addLog, processStream]);
 
   const reloadLens = useCallback(async (): Promise<boolean> => {
     if (!sessionRef.current || !lensRepositoryRef.current || !currentConfigRef.current) {
@@ -418,6 +450,11 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     if (push2WebSubscriptionRef.current) {
       push2WebSubscriptionRef.current = null;
       addLog('🔌 Push2Web unsubscribed');
+    }
+    if (videoRotatorRef.current) {
+      videoRotatorRef.current.stop();
+      videoRotatorRef.current = null;
+      addLog('🔄 Video rotator stopped');
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
