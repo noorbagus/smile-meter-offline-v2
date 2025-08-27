@@ -21,7 +21,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   disabled = false
 }) => {
   return (
-    <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/50 to-transparent z-10">
+    <div className="absolute bottom-0 inset-x-0 p-7 bg-gradient-to-t from-black/50 to-transparent z-10">
       <div className="flex items-center justify-center">
         <RecordButton
           recordingState={recordingState}
