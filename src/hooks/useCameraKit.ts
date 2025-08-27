@@ -226,7 +226,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           left: 50%;
           width: ${displayWidth}px;
           height: ${displayHeight}px;
-          transform: translate(-50%, -50%) rotate(-90deg);
+          transform: translate(-50%, -50%);
           object-fit: contain;
           object-position: center;
           background: transparent;
