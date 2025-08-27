@@ -133,7 +133,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     return processedStream;
   }, [addLog]);
 
-  // Replace attachCameraOutput function di src/hooks/useCameraKit.ts
+// Replace attachCameraOutput function di src/hooks/useCameraKit.ts
 
 const attachCameraOutput = useCallback((
   canvas: HTMLCanvasElement, 
@@ -178,15 +178,15 @@ const attachCameraOutput = useCallback((
           position: fixed !important;
           top: 0 !important;
           left: 0 !important;
-          width: ${displayWidth}px !important;
-          height: ${displayHeight}px !important;
+          width: 100vw !important;
+          height: 100vh !important;
           object-fit: cover !important;
           object-position: center !important;
           background: transparent !important;
           image-rendering: auto !important;
           will-change: transform !important;
           backface-visibility: hidden !important;
-          z-index: 10 !important;
+          z-index: 2147483647 !important;
           margin: 0 !important;
           padding: 0 !important;
         `;
