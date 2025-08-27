@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Push2Web integration with FIXED 90° rotation
+// src/hooks/useCameraKit.ts - Stream Rotator + Push2Web integration
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { Push2Web } from '@snap/push2web';
@@ -16,6 +16,100 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
       setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
     )
   ]);
+};
+
+/**
+ * STREAM ROTATOR: Rotate landscape 2560x1440 → portrait 1440x2560
+ * This fixes Firefox upside-down issue by pre-rotating stream before Camera Kit
+ */
+const rotateStreamToPortrait = (landscapeStream: MediaStream, addLog: (msg: string) => void): MediaStream => {
+  try {
+    const videoTrack = landscapeStream.getVideoTracks()[0];
+    const audioTracks = landscapeStream.getAudioTracks();
+    
+    if (!videoTrack) {
+      addLog('❌ No video track to rotate');
+      return landscapeStream;
+    }
+
+    const settings = videoTrack.getSettings();
+    const originalWidth = settings.width || 2560;
+    const originalHeight = settings.height || 1440;
+    const isLandscape = originalWidth > originalHeight;
+    
+    addLog(`🔄 Stream Rotator: ${originalWidth}×${originalHeight} (${isLandscape ? 'landscape' : 'portrait'})`);
+    
+    if (!isLandscape) {
+      addLog('ℹ️ Stream already portrait - no rotation needed');
+      return landscapeStream;
+    }
+
+    // Create canvas for rotation
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      addLog('❌ Cannot create canvas context for rotation');
+      return landscapeStream;
+    }
+
+    // Set rotated dimensions: landscape width→portrait height, landscape height→portrait width
+    const rotatedWidth = originalHeight;   // 1440 (from landscape height)
+    const rotatedHeight = originalWidth;   // 2560 (from landscape width)
+    
+    canvas.width = rotatedWidth;
+    canvas.height = rotatedHeight;
+    
+    addLog(`🎯 Rotation target: ${rotatedWidth}×${rotatedHeight} portrait`);
+
+    // Create video element
+    const video = document.createElement('video');
+    video.srcObject = landscapeStream;
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+
+    // Rotation rendering function
+    const renderRotatedFrame = () => {
+      if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+        ctx.save();
+        
+        // Translate to center, rotate 90°, translate back
+        ctx.translate(rotatedWidth / 2, rotatedHeight / 2);
+        ctx.rotate(Math.PI / 2); // 90 degrees clockwise
+        ctx.translate(-originalWidth / 2, -originalHeight / 2);
+        
+        // Draw rotated video frame
+        ctx.drawImage(video, 0, 0, originalWidth, originalHeight);
+        ctx.restore();
+      }
+      
+      requestAnimationFrame(renderRotatedFrame);
+    };
+
+    // Start rotation loop when video loads
+    video.addEventListener('loadeddata', () => {
+      addLog(`✅ Video loaded: ${video.videoWidth}×${video.videoHeight}`);
+      renderRotatedFrame();
+    });
+
+    // Create rotated stream from canvas
+    const rotatedCanvasStream = canvas.captureStream(30); // 30fps
+    
+    // Preserve audio tracks
+    audioTracks.forEach(audioTrack => {
+      const clonedAudioTrack = audioTrack.clone();
+      rotatedCanvasStream.addTrack(clonedAudioTrack);
+      addLog(`🎤 Audio track preserved: ${audioTrack.label}`);
+    });
+
+    addLog(`🔄 Stream rotated: ${originalWidth}×${originalHeight} → ${rotatedWidth}×${rotatedHeight}`);
+    return rotatedCanvasStream;
+
+  } catch (error) {
+    addLog(`❌ Stream rotation failed: ${error}`);
+    return landscapeStream; // Fallback to original
+  }
 };
 
 const preloadCameraKit = async () => {
@@ -219,15 +313,14 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           displayWidth = containerRect.height * canvasAspect;
         }
         
-        // Perfect fit CSS with Firefox rotation fix
-        const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+        // Normal CSS - no Firefox rotation fix needed anymore
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
           left: 50%;
           width: ${displayWidth}px;
           height: ${displayHeight}px;
-          transform: translate(-50%, -50%) ${isFirefox ? 'rotate(90deg)' : ''};
+          transform: translate(-50%, -50%);
           object-fit: contain;
           object-position: center;
           background: transparent;
@@ -372,8 +465,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Updating existing session...');
         
-        // Create source without rotation - handle at CSS level
-        const source = createMediaStreamSource(stream, {
+        // STREAM ROTATOR: Rotate landscape stream to portrait before Camera Kit
+        const rotatedStream = rotateStreamToPortrait(stream, addLog);
+        
+        const source = createMediaStreamSource(rotatedStream, {
           transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
           cameraType: currentFacingMode
         });
@@ -382,7 +477,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
         addLog(`✅ Adaptive render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
         
-        streamRef.current = stream;
+        streamRef.current = rotatedStream;
         containerRef.current = containerReference;
         
         if (sessionRef.current.output?.live && containerReference.current && !isAttachedRef.current) {
@@ -393,7 +488,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           }, 100);
         }
         
-        addLog('✅ Stream updated');
+        addLog('✅ Stream updated with rotation');
         return true;
       }
 
@@ -417,7 +512,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       addLog('🎬 Creating session...');
       const session: any = await withTimeout(cameraKit.createSession(), 5000);
       sessionRef.current = session;
-      streamRef.current = stream;
       isInitializedRef.current = true;
       
       session.events.addEventListener("error", (event: any) => {
@@ -425,14 +519,17 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
-      // Create source without rotation - handle rotation at CSS level
-      const source = createMediaStreamSource(stream, {
+      // STREAM ROTATOR: Rotate landscape stream to portrait before Camera Kit
+      const rotatedStream = rotateStreamToPortrait(stream, addLog);
+      streamRef.current = rotatedStream;
+
+      const source = createMediaStreamSource(rotatedStream, {
         transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
         cameraType: currentFacingMode
       });
       
       await withTimeout(session.setSource(source), 3000);
-      addLog('✅ Camera source configured');
+      addLog('✅ Camera source configured with stream rotation');
 
       await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
       addLog(`✅ Adaptive AR render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
@@ -471,7 +568,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Camera Kit + Push2Web ready');
+      addLog('🎉 Camera Kit + Push2Web ready with stream rotation');
       return true;
 
     } catch (error: any) {
@@ -529,7 +626,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       );
 
       addLog(`✅ New ${newFacingMode} LANDSCAPE stream obtained`);
-      streamRef.current = newStream;
 
       // Log new stream details with orientation check
       const videoTracks = newStream.getVideoTracks();
@@ -550,14 +646,17 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       
       addLog(`🎤 Audio tracks: ${audioTracks.length}`);
 
-      // Create source without rotation - handle rotation at CSS level
-      const source = createMediaStreamSource(newStream, {
-        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+      // STREAM ROTATOR: Rotate new landscape stream to portrait before Camera Kit
+      const rotatedStream = rotateStreamToPortrait(newStream, addLog);
+      streamRef.current = rotatedStream;
+
+      const source = createMediaStreamSource(rotatedStream, {
+        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
         cameraType: newFacingMode
       });
       
       await withTimeout(sessionRef.current.setSource(source), 3000);
-      addLog('✅ Source set');
+      addLog('✅ Source set with stream rotation');
 
       const config = currentConfigRef.current;
       if (config) {
@@ -573,8 +672,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }
 
       setCurrentFacingMode(newFacingMode);
-      addLog(`🎉 Camera switched to ${newFacingMode}`);
-      return newStream;
+      addLog(`🎉 Camera switched to ${newFacingMode} with rotation`);
+      return rotatedStream;
       
     } catch (error: any) {
       addLog(`❌ Camera switch failed: ${error.message}`);
