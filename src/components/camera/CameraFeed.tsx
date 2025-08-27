@@ -1,7 +1,7 @@
 // src/components/camera/CameraFeed.tsx - Responsive AR container with Firefox orientation fix
 import React from 'react';
 import type { CameraState, RecordingState } from '../../hooks';
-import type { CameraOrientationFix } from '../../utils/browserdetection';
+import type { CameraOrientationFix } from '../../utils/browserDetection';
 
 interface CameraFeedProps {
   cameraFeedRef: React.RefObject<HTMLDivElement>;

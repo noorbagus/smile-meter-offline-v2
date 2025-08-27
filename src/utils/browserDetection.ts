@@ -1,4 +1,4 @@
-// src/utils/browserDetection.ts - Firefox camera orientation detection
+// src/utils/browserdetection.ts - Firefox camera orientation detection
 export interface BrowserInfo {
     isFirefox: boolean;
     isChrome: boolean;

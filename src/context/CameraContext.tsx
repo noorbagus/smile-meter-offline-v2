@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useRef } from 'react';
 import { useCameraKit, useCameraPermissions, useDebugLogger } from '../hooks';
 import type { CameraState, PermissionState, ErrorInfo } from '../hooks';
-import type { CameraOrientationFix } from '../utils/browserdetection';
+import type { CameraOrientationFix } from '../utils/browserDetection';
 
 interface CameraContextValue {
   // Camera Kit

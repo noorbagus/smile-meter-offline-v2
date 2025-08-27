@@ -1,6 +1,6 @@
 // src/hooks/useCameraPermissions.ts - FORCE EXACT 4K constraints + Firefox orientation fix
 import { useState, useCallback } from 'react';
-import { detectBrowser, testCameraOrientation, getBrowserOptimizedConstraints, CameraOrientationFix } from '../utils/browserdetection';
+import { detectBrowser, testCameraOrientation, getBrowserOptimizedConstraints, CameraOrientationFix } from '../utils/browserDetection';
 
 export type PermissionState = 'checking' | 'granted' | 'denied' | 'prompt';
 export type CameraState = 'initializing' | 'ready' | 'error' | 'permission_denied' | 'https_required';
