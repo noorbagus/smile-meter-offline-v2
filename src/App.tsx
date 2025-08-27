@@ -1,4 +1,4 @@
-// src/App.tsx - Fullscreen implementation with floating buttons + Firefox camera fix
+// src/App.tsx - Auto-download flow without VideoPreview modal
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -12,13 +12,11 @@ import {
   CameraFeed,
   CameraControls,
   RecordingControls,
-  VideoPreview,
   SettingsPanel,
   RenderingModal
 } from './components';
 import { LoginKit } from './components/LoginKit';
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
-import { applyCameraOrientationFix } from './utils/browserDetection';
 import { Maximize, X } from 'lucide-react';
 
 const CameraApp: React.FC = () => {
@@ -42,7 +40,6 @@ const CameraApp: React.FC = () => {
     currentFacingMode,
     permissionState,
     errorInfo,
-    cameraOrientationFix,
     initializeCameraKit,
     switchCamera,
     reloadLens,
@@ -68,8 +65,6 @@ const CameraApp: React.FC = () => {
     toggleRecording,
     formatTime,
     downloadVideo,
-    showPreview,
-    setShowPreview,
     processAndShareVideo,
     processingProgress,
     processingMessage,
@@ -77,14 +72,6 @@ const CameraApp: React.FC = () => {
     showRenderingModal,
     setShowRenderingModal
   } = useRecordingContext();
-
-  // Apply Firefox orientation fix to camera container
-  useEffect(() => {
-    if (cameraOrientationFix && cameraFeedRef.current) {
-      applyCameraOrientationFix(cameraFeedRef.current, cameraOrientationFix);
-      addLog(`🔄 Applied Firefox orientation fix: ${cameraOrientationFix.description}`);
-    }
-  }, [cameraOrientationFix, cameraFeedRef, addLog]);
 
   // Fullscreen functions
   const enterFullscreen = useCallback(async () => {
@@ -185,7 +172,7 @@ const CameraApp: React.FC = () => {
     });
   }, [isFullscreen, addLog]);
 
-  // Prevent all gestures in fullscreen
+  // Prevent gestures in fullscreen
   useEffect(() => {
     if (!isFullscreen) return;
 
@@ -384,6 +371,17 @@ const CameraApp: React.FC = () => {
       if (audioTracks.length === 0) {
         addLog('🔇 CRITICAL WARNING: No audio tracks in camera stream!');
         addLog('📱 Recordings will be SILENT - check microphone permissions');
+      } else {
+        audioTracks.forEach((track, index) => {
+          addLog(`🎤 Audio track ${index}: ${track.label || 'Unknown'}, state: ${track.readyState}, enabled: ${track.enabled}`);
+          
+          if (track.readyState !== 'live') {
+            addLog(`⚠️ Audio track ${index} not live: ${track.readyState}`);
+          }
+          if (!track.enabled) {
+            addLog(`⚠️ Audio track ${index} disabled`);
+          }
+        });
       }
     } else {
       addLog('❌ No camera stream available for recording');
@@ -412,25 +410,6 @@ const CameraApp: React.FC = () => {
       addLog(`❌ Reload error: ${error}`);
     }
   }, [isReady, reloadLens, addLog]);
-
-  const handleClosePreview = useCallback(() => {
-    setShowPreview(false);
-    addLog('📱 Preview closed');
-    setTimeout(() => restoreCameraFeed(), 100);
-  }, [setShowPreview, addLog, restoreCameraFeed]);
-
-  const handleProcessAndShare = useCallback(() => {
-    addLog('🎬 Starting video processing...');
-    processAndShareVideo();
-  }, [processAndShareVideo, addLog]);
-
-  const handleDownload = useCallback(() => {
-    downloadVideo();
-    setTimeout(() => {
-      setShowPreview(false);
-      restoreCameraFeed();
-    }, 500);
-  }, [downloadVideo, setShowPreview, restoreCameraFeed]);
 
   // Initialize app when ready
   useEffect(() => {
@@ -496,33 +475,6 @@ const CameraApp: React.FC = () => {
     );
   }
 
-  // Video preview
-  if (showPreview && recordedVideo) {
-    return (
-      <>
-        <VideoPreview
-          recordedVideo={recordedVideo}
-          onClose={handleClosePreview}
-          onDownload={handleDownload}
-          onProcessAndShare={handleProcessAndShare}
-        />
-        
-        <RenderingModal
-          isOpen={showRenderingModal}
-          progress={processingProgress}
-          message={processingMessage}
-          isComplete={processingProgress === 100 && !processingError}
-          hasError={!!processingError}
-          onCancel={() => {
-            setShowRenderingModal(false);
-            addLog('❌ Processing cancelled');
-            setTimeout(() => restoreCameraFeed(), 100);
-          }}
-        />
-      </>
-    );
-  }
-
   return (
     <div 
       className="fixed inset-0 bg-black flex flex-col"
@@ -532,22 +484,22 @@ const CameraApp: React.FC = () => {
       onMouseUp={handleTouchEnd}
       onClick={handleDoubleTap}
     >
-      {/* Camera Feed with Firefox orientation fix */}
+      {/* Camera Feed */}
       <CameraFeed
         cameraFeedRef={cameraFeedRef}
         cameraState={cameraState}
         recordingState={recordingState}
         isFlipped={isFlipped}
-        cameraOrientationFix={cameraOrientationFix}
       />
 
-      {/* Camera Controls */}
+      {/* Camera Controls - Hidden in fullscreen, visible in normal mode */}
       <CameraControls
         onSettings={() => setShowSettings(true)}
         onFlip={() => setIsFlipped(!isFlipped)}
+        isFullscreen={isFullscreen}
       />
 
-      {/* Recording Controls */}
+      {/* Recording Controls - Only record button visible */}
       <RecordingControls
         recordingState={recordingState}
         recordingTime={recordingTime}
@@ -616,7 +568,7 @@ const CameraApp: React.FC = () => {
       />
 
       <RenderingModal
-        isOpen={showRenderingModal && !showPreview}
+        isOpen={showRenderingModal}
         progress={processingProgress}
         message={processingMessage}
         isComplete={processingProgress === 100 && !processingError}

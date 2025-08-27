@@ -1,4 +1,4 @@
-// src/context/RecordingContext.tsx - Fixed camera restoration after share
+// src/context/RecordingContext.tsx - Auto-download after recording
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useMediaRecorder } from '../hooks';
 import { VideoProcessor, ProcessingProgress } from '../utils/VideoProcessor';
@@ -87,16 +87,13 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     isIdle
   } = useMediaRecorder(addLog);
 
-  // Auto-share when recording completes
+  // Auto-download when recording completes - NO preview needed
   useEffect(() => {
-    if (recordedVideo && recordingState === 'idle' && autoShareEnabled) {
-      addLog('🚀 Auto-sharing video...');
-      processAndShareVideo();
-    } else if (recordedVideo && recordingState === 'idle' && !autoShareEnabled) {
-      addLog('🎬 Recording completed - showing preview');
-      setShowPreview(true);
+    if (recordedVideo && recordingState === 'idle') {
+      addLog('📥 Recording complete - auto-downloading...');
+      downloadVideo();
     }
-  }, [recordedVideo, recordingState, autoShareEnabled, addLog]);
+  }, [recordedVideo, recordingState, addLog]);
 
   // Enhanced clear recording with camera restoration
   const clearRecording = React.useCallback(() => {
@@ -172,10 +169,11 @@ export const RecordingProvider: React.FC<RecordingProviderProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    addLog('💾 Video downloaded');
+    addLog('💾 Video downloaded automatically');
     
-    // Restore camera after download
+    // Clear recording and restore camera after download
     setTimeout(() => {
+      clearRecording();
       if (restoreCameraFeed) {
         addLog('🔄 Restoring camera feed after download...');
         restoreCameraFeed();

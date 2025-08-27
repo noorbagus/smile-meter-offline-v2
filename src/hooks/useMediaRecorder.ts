@@ -1,4 +1,4 @@
-// src/hooks/useMediaRecorder.ts - MAX QUALITY recording untuk portrait 1440x2560
+// src/hooks/useMediaRecorder.ts - MAX QUALITY recording with 20-second limit
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { detectAndroid, detectiOS } from '../utils/androidRecorderFix';
 
@@ -57,7 +57,7 @@ class MaxQualityMediaRecorder {
     this.recorder.start(100);
     
     const platform = detectAndroid() ? 'Android' : detectiOS() ? 'iPhone' : 'Desktop';
-    this.addLog(`🎬 ${platform} MAX quality recording started: ${options.mimeType || 'default'} with ${audioTracks.length} audio tracks`);
+    this.addLog(`🎬 ${platform} MAX quality recording started (20s limit): ${options.mimeType || 'default'} with ${audioTracks.length} audio tracks`);
   }
 
   stop(): void {
@@ -295,7 +295,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
   const [recordedVideo, setRecordedVideo] = useState<Blob | File | null>(null);
 
   const maxQualityRecorderRef = useRef<MaxQualityMediaRecorder | null>(null);
-  const timerRef = useRef<number | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const recordingStartTimeRef = useRef<number>(0);
 
   const startRecording = useCallback((canvas: HTMLCanvasElement, audioStream?: MediaStream) => {
@@ -391,7 +391,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
       
       const platform = detectAndroid() ? 'Android' : detectiOS() ? 'iPhone' : 'Desktop';
       const qualityMode = canvas.width >= 1440 ? 'MAX QUALITY' : 'SCALED';
-      addLog(`🎬 ${platform} ${qualityMode} recording started - Audio tracks: ${finalAudioTracks.length}`);
+      addLog(`🎬 ${platform} ${qualityMode} recording started (20s limit) - Audio tracks: ${finalAudioTracks.length}`);
       return true;
 
     } catch (error) {
@@ -478,16 +478,23 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
     addLog('🧹 MAX quality MediaRecorder cleanup complete');
   }, [addLog]);
 
-  // Recording timer
+  // Recording timer with 20-second limit
   useEffect(() => {
     if (recordingState === 'recording') {
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1;
           
+          // Auto-stop at 20 seconds
+          if (newTime >= 20) {
+            addLog('⏰ 20-second limit reached - auto-stopping recording');
+            stopRecording();
+            return 20;
+          }
+          
           if (newTime % 5 === 0 && maxQualityRecorderRef.current) {
             const state = maxQualityRecorderRef.current.getState();
-            addLog(`📊 MAX quality recording: ${newTime}s, state: ${state}`);
+            addLog(`📊 MAX quality recording: ${newTime}s/20s, state: ${state}`);
           }
           
           return newTime;
@@ -509,7 +516,7 @@ export const useMediaRecorder = (addLog: (message: string) => void) => {
         timerRef.current = null;
       }
     };
-  }, [recordingState, addLog]);
+  }, [recordingState, addLog, stopRecording]);
 
   const formatTime = useCallback((seconds: number): string => {
     const mins = Math.floor(seconds / 60);
