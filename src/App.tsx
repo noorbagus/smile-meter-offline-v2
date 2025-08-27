@@ -18,7 +18,7 @@ import {
 } from './components';
 import { LoginKit } from './components/LoginKit';
 import { checkAndRedirect, isInstagramBrowser, retryRedirect } from './utils/instagramBrowserDetector';
-import { applyCameraOrientationFix } from './utils/browserdetection';
+import { applyCameraOrientationFix } from './utils/browserDetection';
 import { Maximize, X } from 'lucide-react';
 
 const CameraApp: React.FC = () => {
