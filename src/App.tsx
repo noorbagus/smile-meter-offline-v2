@@ -465,7 +465,7 @@ const CameraApp: React.FC = () => {
     retryRedirect();
   }, [addLog]);
 
-  // Show loading while checking/redirecting
+  // Show loading while checking/redirecting.
   if (!appReady) {
     const isInInstagram = isInstagramBrowser();
     
