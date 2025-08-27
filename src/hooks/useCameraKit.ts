@@ -133,7 +133,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     return processedStream;
   }, [addLog]);
 
-// Update attachCameraOutput function di src/hooks/useCameraKit.ts
+  // Replace attachCameraOutput function di src/hooks/useCameraKit.ts
 
 const attachCameraOutput = useCallback((
   canvas: HTMLCanvasElement, 
@@ -158,25 +158,22 @@ const attachCameraOutput = useCallback((
       }
       
       outputCanvasRef.current = canvas;
-      addLog(`📊 Canvas: ${canvas.width}x${canvas.height}`);
+      addLog(`📊 Canvas Internal: ${canvas.width}x${canvas.height}`);
       
-      // DETECT FULLSCREEN MODE
+      // DETECT 4K PORTRAIT + FULLSCREEN
+      const is4KPortrait = window.screen.width === 2160 && window.screen.height === 3840;
       const isInFullscreen = !!document.fullscreenElement;
       
       let displayWidth, displayHeight;
       
-      if (isInFullscreen) {
-        // FULLSCREEN: Use actual screen dimensions for 43" portrait
-        const screenWidth = window.screen.width;
-        const screenHeight = window.screen.height;
+      if (isInFullscreen && is4KPortrait) {
+        // 4K PORTRAIT FULLSCREEN: Use exact screen dimensions
+        displayWidth = window.screen.width;   // 2160
+        displayHeight = window.screen.height; // 3840
         
-        // For portrait 43" (1440x2560), use full screen
-        displayWidth = screenWidth;
-        displayHeight = screenHeight;
+        addLog(`🎯 4K Portrait Fullscreen: ${displayWidth}x${displayHeight}`);
         
-        addLog(`🖥️ FULLSCREEN 43" Portrait: ${displayWidth}x${displayHeight}`);
-        
-        // FORCE FULL SCREEN CSS
+        // FORCE 4K FULL SCREEN CSS
         canvas.style.cssText = `
           position: fixed !important;
           top: 0 !important;
@@ -186,14 +183,35 @@ const attachCameraOutput = useCallback((
           object-fit: cover !important;
           object-position: center !important;
           background: transparent !important;
-          image-rendering: crisp-edges !important;
+          image-rendering: auto !important;
           will-change: transform !important;
           backface-visibility: hidden !important;
+          z-index: 10 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        `;
+        
+      } else if (isInFullscreen) {
+        // OTHER FULLSCREEN: Use screen dimensions
+        displayWidth = window.screen.width;
+        displayHeight = window.screen.height;
+        
+        addLog(`🖥️ Standard Fullscreen: ${displayWidth}x${displayHeight}`);
+        
+        canvas.style.cssText = `
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          object-fit: cover !important;
+          object-position: center !important;
+          background: transparent !important;
           z-index: 10 !important;
         `;
         
       } else {
-        // WINDOWED MODE: Use container calculations
+        // WINDOWED MODE: Container-based calculations
         const containerRect = containerReference.current.getBoundingClientRect();
         const canvasAspect = canvas.width / canvas.height;
         const containerAspect = containerRect.width / containerRect.height;
@@ -205,6 +223,8 @@ const attachCameraOutput = useCallback((
           displayHeight = containerRect.height;
           displayWidth = containerRect.height * canvasAspect;
         }
+        
+        addLog(`📱 Windowed: ${displayWidth.toFixed(0)}x${displayHeight.toFixed(0)}`);
         
         // Standard windowed CSS
         canvas.style.cssText = `
@@ -223,7 +243,7 @@ const attachCameraOutput = useCallback((
         `;
       }
       
-      // Set container style
+      // Container style
       containerReference.current.style.cssText = `
         position: relative;
         width: 100%;
@@ -244,8 +264,8 @@ const attachCameraOutput = useCallback((
         const scaleY = displayHeight / canvas.height;
         addLog(`✅ Canvas attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
         
-        if (isInFullscreen) {
-          addLog(`🎯 43" Portrait FULLSCREEN - No black bars!`);
+        if (isInFullscreen && is4KPortrait && Math.abs(scaleX - 1) < 0.01 && Math.abs(scaleY - 1) < 0.01) {
+          addLog(`🎉 PERFECT 4K MATCH - NO BLACK BARS!`);
         }
         
       } catch (e) {
