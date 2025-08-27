@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Canvas texture rotate 180°
+// src/hooks/useCameraKit.ts - Push2Web integration with FIXED 90° rotation
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { Push2Web } from '@snap/push2web';
@@ -180,53 +180,32 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     };
   }, []);
 
-// In src/hooks/useCameraKit.ts - Replace attachCameraOutput function
-const attachCameraOutput = useCallback((
-  canvas: HTMLCanvasElement, 
-  containerReference: React.RefObject<HTMLDivElement>
-) => {
-  if (!containerReference.current) {
-    addLog('❌ Container not available');
-    return;
-  }
+  const attachCameraOutput = useCallback((
+    canvas: HTMLCanvasElement, 
+    containerReference: React.RefObject<HTMLDivElement>
+  ) => {
+    if (!containerReference.current) {
+      addLog('❌ Container not available');
+      return;
+    }
 
-  try {
-    requestAnimationFrame(() => {
-      if (!containerReference.current) return;
+    try {
+      requestAnimationFrame(() => {
+        if (!containerReference.current) return;
 
-      // Clear container
-      while (containerReference.current.firstChild) {
-        try {
-          containerReference.current.removeChild(containerReference.current.firstChild);
-        } catch (e) {
-          break;
+        // Clear container
+        while (containerReference.current.firstChild) {
+          try {
+            containerReference.current.removeChild(containerReference.current.firstChild);
+          } catch (e) {
+            break;
+          }
         }
-      }
-      
-      outputCanvasRef.current = canvas;
-      addLog(`📊 Canvas: ${canvas.width}x${canvas.height}`);
-      
-      // Detect fullscreen mode
-      const isInFullscreen = !!document.fullscreenElement;
-      
-      if (isInFullscreen) {
-        // FULLSCREEN: Fill entire screen, NO CROP
-        canvas.style.cssText = `
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          width: 100vw !important;
-          height: 100vh !important;
-          object-fit: cover !important;
-          object-position: center !important;
-          background: #000 !important;
-          z-index: 10 !important;
-        `;
         
-        addLog(`🖥️ FULLSCREEN: 100vw x 100vh (NO SIDE CROP)`);
+        outputCanvasRef.current = canvas;
+        addLog(`📊 Canvas: ${canvas.width}x${canvas.height}`);
         
-      } else {
-        // NORMAL MODE: Responsive container fitting
+        // Perfect fit calculations
         const containerRect = containerReference.current.getBoundingClientRect();
         const canvasAspect = canvas.width / canvas.height;
         const containerAspect = containerRect.width / containerRect.height;
@@ -240,14 +219,15 @@ const attachCameraOutput = useCallback((
           displayWidth = containerRect.height * canvasAspect;
         }
         
-        // Normal mode CSS
+        // Perfect fit CSS with Firefox rotation fix
+        const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
           left: 50%;
           width: ${displayWidth}px;
           height: ${displayHeight}px;
-          transform: translate(-50%, -50%);
+          transform: translate(-50%, -50%) ${isFirefox ? 'rotate(90deg)' : ''};
           object-fit: contain;
           object-position: center;
           background: transparent;
@@ -256,34 +236,33 @@ const attachCameraOutput = useCallback((
           backface-visibility: hidden;
         `;
         
-        addLog(`📱 NORMAL: ${displayWidth}x${displayHeight}`);
-      }
-      
-      // Container styles
-      containerReference.current.style.cssText = `
-        position: relative;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #000;
-        touch-action: manipulation;
-      `;
-      
-      try {
-        containerReference.current.appendChild(canvas);
-        isAttachedRef.current = true;
-        addLog(`✅ Canvas attached - Mode: ${isInFullscreen ? 'FULLSCREEN (NO CROP)' : 'NORMAL'}`);
-      } catch (e) {
-        addLog(`❌ Attachment failed: ${e}`);
-      }
-    });
-  } catch (error) {
-    addLog(`❌ Canvas error: ${error}`);
-  }
-}, [addLog]);
+        containerReference.current.style.cssText = `
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #000;
+          touch-action: manipulation;
+        `;
+        
+        try {
+          containerReference.current.appendChild(canvas);
+          isAttachedRef.current = true;
+          
+          const scaleX = displayWidth / canvas.width;
+          const scaleY = displayHeight / canvas.height;
+          addLog(`✅ Canvas attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
+        } catch (e) {
+          addLog(`❌ Attachment failed: ${e}`);
+        }
+      });
+    } catch (error) {
+      addLog(`❌ Canvas error: ${error}`);
+    }
+  }, [addLog]);
 
   const restoreCameraFeed = useCallback(() => {
     if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
@@ -292,7 +271,7 @@ const attachCameraOutput = useCallback((
       const isCanvasAttached = containerRef.current.current.contains(outputCanvasRef.current);
       
       if (!isCanvasAttached) {
-        addLog('📱 Re-attaching canvas with 180° rotation');
+        addLog('📱 Re-attaching canvas');
         attachCameraOutput(outputCanvasRef.current, containerRef.current);
       }
       
@@ -393,6 +372,7 @@ const attachCameraOutput = useCallback((
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Updating existing session...');
         
+        // Create source without rotation - handle at CSS level
         const source = createMediaStreamSource(stream, {
           transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
           cameraType: currentFacingMode
@@ -445,6 +425,7 @@ const attachCameraOutput = useCallback((
         setCameraState('error');
       });
 
+      // Create source without rotation - handle rotation at CSS level
       const source = createMediaStreamSource(stream, {
         transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
         cameraType: currentFacingMode
@@ -484,13 +465,13 @@ const attachCameraOutput = useCallback((
 
       setTimeout(() => {
         if (session.output.live && containerReference.current && !isAttachedRef.current) {
-          addLog('🎥 Attaching adaptive output with 180° rotation...');
+          addLog('🎥 Attaching adaptive output...');
           attachCameraOutput(session.output.live, containerReference);
         }
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Camera Kit + Push2Web ready with rotated texture');
+      addLog('🎉 Camera Kit + Push2Web ready');
       return true;
 
     } catch (error: any) {
@@ -569,8 +550,9 @@ const attachCameraOutput = useCallback((
       
       addLog(`🎤 Audio tracks: ${audioTracks.length}`);
 
+      // Create source without rotation - handle rotation at CSS level
       const source = createMediaStreamSource(newStream, {
-        transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
+        transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
         cameraType: newFacingMode
       });
       
@@ -591,7 +573,7 @@ const attachCameraOutput = useCallback((
       }
 
       setCurrentFacingMode(newFacingMode);
-      addLog(`🎉 Camera switched to ${newFacingMode} with 180° texture rotation`);
+      addLog(`🎉 Camera switched to ${newFacingMode}`);
       return newStream;
       
     } catch (error: any) {
