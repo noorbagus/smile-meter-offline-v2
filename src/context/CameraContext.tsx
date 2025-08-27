@@ -1,7 +1,8 @@
-// src/context/CameraContext.tsx - Pure Camera Kit without Push2Web
+// src/context/CameraContext.tsx - Push2Web integration + Firefox orientation fix
 import React, { createContext, useContext, useRef } from 'react';
 import { useCameraKit, useCameraPermissions, useDebugLogger } from '../hooks';
 import type { CameraState, PermissionState, ErrorInfo } from '../hooks';
+import type { CameraOrientationFix } from '../utils/browserdetection';
 
 interface CameraContextValue {
   // Camera Kit
@@ -19,9 +20,10 @@ interface CameraContextValue {
   isReady: boolean;
   isInitializing: boolean;
   
-  // Permissions
+  // Permissions + Firefox Fix
   permissionState: PermissionState;
   errorInfo: ErrorInfo | null;
+  cameraOrientationFix: CameraOrientationFix | null;
   checkCameraPermission: () => Promise<boolean>;
   requestCameraStream: (facingMode?: 'user' | 'environment', includeAudio?: boolean) => Promise<MediaStream | null>;
   requestPermission: () => Promise<MediaStream | null>;
@@ -33,6 +35,15 @@ interface CameraContextValue {
   addLog: (message: string, level?: 'info' | 'warning' | 'error' | 'success') => void;
   clearLogs: () => void;
   exportLogs: () => void;
+  
+  // Push2Web Functions
+  subscribePush2Web: (accessToken: string) => Promise<boolean>;
+  getPush2WebStatus: () => {
+    available: boolean;
+    subscribed: boolean;
+    session: boolean;
+    repository: boolean;
+  };
   
   // Refs
   cameraFeedRef: React.RefObject<HTMLDivElement>;
@@ -60,6 +71,7 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
   const {
     permissionState,
     errorInfo,
+    cameraOrientationFix,
     checkCameraPermission,
     requestCameraStream,
     requestPermission,
@@ -80,7 +92,9 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     getStream,
     restoreCameraFeed,
     isReady,
-    isInitializing
+    isInitializing,
+    subscribePush2Web,
+    getPush2WebStatus
   } = useCameraKit(addLog);
 
   const value: CameraContextValue = {
@@ -99,9 +113,10 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     isReady,
     isInitializing,
     
-    // Permissions
+    // Permissions + Firefox Fix
     permissionState,
     errorInfo,
+    cameraOrientationFix,
     checkCameraPermission,
     requestCameraStream,
     requestPermission,
@@ -113,6 +128,10 @@ export const CameraProvider: React.FC<CameraProviderProps> = ({ children }) => {
     addLog,
     clearLogs,
     exportLogs,
+    
+    // Push2Web Functions
+    subscribePush2Web,
+    getPush2WebStatus,
     
     // Refs
     cameraFeedRef

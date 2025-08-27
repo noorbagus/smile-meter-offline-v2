@@ -90,6 +90,75 @@ body {
   left: 0;
 }
 
+/* Firefox Camera Orientation Fixes */
+.firefox-rotate-180 canvas {
+  transform: rotate(180deg) !important;
+  -webkit-transform: rotate(180deg) !important;
+  -moz-transform: rotate(180deg) !important;
+  -ms-transform: rotate(180deg) !important;
+  transform-origin: center center !important;
+}
+
+.firefox-flip-vertical canvas {
+  transform: scaleY(-1) !important;
+  -webkit-transform: scaleY(-1) !important;
+  -moz-transform: scaleY(-1) !important;
+  -ms-transform: scaleY(-1) !important;
+  transform-origin: center center !important;
+}
+
+.firefox-flip-horizontal canvas {
+  transform: scaleX(-1) !important;
+  -webkit-transform: scaleX(-1) !important;
+  -moz-transform: scaleX(-1) !important;
+  -ms-transform: scaleX(-1) !important;
+  transform-origin: center center !important;
+}
+
+.firefox-flip-both canvas {
+  transform: scale(-1, -1) !important;
+  -webkit-transform: scale(-1, -1) !important;
+  -moz-transform: scale(-1, -1) !important;
+  -ms-transform: scale(-1, -1) !important;
+  transform-origin: center center !important;
+}
+
+/* Firefox mobile specific fixes */
+@media (max-width: 768px) {
+  .firefox-rotate-180 canvas {
+    transform: rotate(180deg) !important;
+    transform-origin: center center !important;
+  }
+  
+  /* Mobile Firefox often has additional quirks */
+  .firefox-mobile-fix canvas {
+    backface-visibility: hidden !important;
+    perspective: 1000px !important;
+  }
+}
+
+/* Firefox desktop webcam fixes */
+@media (min-width: 769px) {
+  .firefox-flip-vertical canvas {
+    transform: scaleY(-1) !important;
+    transform-origin: center center !important;
+  }
+  
+  /* Desktop Firefox webcam optimizations */
+  .firefox-desktop-fix canvas {
+    image-rendering: auto !important;
+    image-rendering: crisp-edges !important;
+  }
+}
+
+/* Firefox-specific performance optimizations */
+@-moz-document url-prefix() {
+  canvas {
+    will-change: transform !important;
+    backface-visibility: hidden !important;
+  }
+}
+
 /* Chrome mobile specific fixes */
 @supports (-webkit-touch-callout: none) {
   html {
@@ -381,6 +450,13 @@ body {
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* High DPI Firefox camera optimization */
+  canvas {
+    image-rendering: auto;
+    image-rendering: crisp-edges;
+    image-rendering: -webkit-optimize-contrast;
   }
 }
 
