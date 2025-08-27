@@ -133,35 +133,71 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     return processedStream;
   }, [addLog]);
 
-  const attachCameraOutput = useCallback((
-    canvas: HTMLCanvasElement, 
-    containerReference: React.RefObject<HTMLDivElement>
-  ) => {
-    if (!containerReference.current) {
-      addLog('❌ Container not available');
-      return;
-    }
+// Update attachCameraOutput function di src/hooks/useCameraKit.ts
 
-    try {
-      requestAnimationFrame(() => {
-        if (!containerReference.current) return;
+const attachCameraOutput = useCallback((
+  canvas: HTMLCanvasElement, 
+  containerReference: React.RefObject<HTMLDivElement>
+) => {
+  if (!containerReference.current) {
+    addLog('❌ Container not available');
+    return;
+  }
 
-        while (containerReference.current.firstChild) {
-          try {
-            containerReference.current.removeChild(containerReference.current.firstChild);
-          } catch (e) {
-            break;
-          }
+  try {
+    requestAnimationFrame(() => {
+      if (!containerReference.current) return;
+
+      // Clear container
+      while (containerReference.current.firstChild) {
+        try {
+          containerReference.current.removeChild(containerReference.current.firstChild);
+        } catch (e) {
+          break;
         }
+      }
+      
+      outputCanvasRef.current = canvas;
+      addLog(`📊 Canvas: ${canvas.width}x${canvas.height}`);
+      
+      // DETECT FULLSCREEN MODE
+      const isInFullscreen = !!document.fullscreenElement;
+      
+      let displayWidth, displayHeight;
+      
+      if (isInFullscreen) {
+        // FULLSCREEN: Use actual screen dimensions for 43" portrait
+        const screenWidth = window.screen.width;
+        const screenHeight = window.screen.height;
         
-        outputCanvasRef.current = canvas;
-        addLog(`📊 Canvas: ${canvas.width}x${canvas.height}`);
+        // For portrait 43" (1440x2560), use full screen
+        displayWidth = screenWidth;
+        displayHeight = screenHeight;
         
+        addLog(`🖥️ FULLSCREEN 43" Portrait: ${displayWidth}x${displayHeight}`);
+        
+        // FORCE FULL SCREEN CSS
+        canvas.style.cssText = `
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: ${displayWidth}px !important;
+          height: ${displayHeight}px !important;
+          object-fit: cover !important;
+          object-position: center !important;
+          background: transparent !important;
+          image-rendering: crisp-edges !important;
+          will-change: transform !important;
+          backface-visibility: hidden !important;
+          z-index: 10 !important;
+        `;
+        
+      } else {
+        // WINDOWED MODE: Use container calculations
         const containerRect = containerReference.current.getBoundingClientRect();
         const canvasAspect = canvas.width / canvas.height;
         const containerAspect = containerRect.width / containerRect.height;
         
-        let displayWidth, displayHeight;
         if (canvasAspect > containerAspect) {
           displayWidth = containerRect.width;
           displayHeight = containerRect.width / canvasAspect;
@@ -170,6 +206,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           displayWidth = containerRect.height * canvasAspect;
         }
         
+        // Standard windowed CSS
         canvas.style.cssText = `
           position: absolute;
           top: 50%;
@@ -184,34 +221,41 @@ export const useCameraKit = (addLog: (message: string) => void) => {
           will-change: transform;
           backface-visibility: hidden;
         `;
+      }
+      
+      // Set container style
+      containerReference.current.style.cssText = `
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000;
+        touch-action: manipulation;
+      `;
+      
+      try {
+        containerReference.current.appendChild(canvas);
+        isAttachedRef.current = true;
         
-        containerReference.current.style.cssText = `
-          position: relative;
-          width: 100%;
-          height: 100%;
-          overflow: hidden;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #000;
-          touch-action: manipulation;
-        `;
+        const scaleX = displayWidth / canvas.width;
+        const scaleY = displayHeight / canvas.height;
+        addLog(`✅ Canvas attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
         
-        try {
-          containerReference.current.appendChild(canvas);
-          isAttachedRef.current = true;
-          
-          const scaleX = displayWidth / canvas.width;
-          const scaleY = displayHeight / canvas.height;
-          addLog(`✅ Canvas attached - Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
-        } catch (e) {
-          addLog(`❌ Attachment failed: ${e}`);
+        if (isInFullscreen) {
+          addLog(`🎯 43" Portrait FULLSCREEN - No black bars!`);
         }
-      });
-    } catch (error) {
-      addLog(`❌ Canvas error: ${error}`);
-    }
-  }, [addLog]);
+        
+      } catch (e) {
+        addLog(`❌ Attachment failed: ${e}`);
+      }
+    });
+  } catch (error) {
+    addLog(`❌ Canvas error: ${error}`);
+  }
+}, [addLog]);
 
   const restoreCameraFeed = useCallback(() => {
     if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
