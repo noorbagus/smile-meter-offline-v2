@@ -69,15 +69,28 @@ const rotateStreamToPortrait = (landscapeStream: MediaStream, addLog: (msg: stri
     video.muted = true;
     video.playsInline = true;
 
-    // Rotation rendering function
+    // Firefox MediaStream detection
+    const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+    const isMediaStream = landscapeStream instanceof MediaStream;
+
+    // Rotation rendering function with Firefox fix
     const renderRotatedFrame = () => {
       if (video.readyState >= 2) { // HAVE_CURRENT_DATA
         ctx.save();
         
-        // Translate to center, rotate 90°, translate back
-        ctx.translate(rotatedWidth / 2, rotatedHeight / 2);
-        ctx.rotate(Math.PI / 2); // 90 degrees clockwise
-        ctx.translate(-originalWidth / 2, -originalHeight / 2);
+        if (isFirefox && isMediaStream) {
+          // Firefox MediaStream fix - flip Y-axis before rotation
+          ctx.translate(rotatedWidth / 2, rotatedHeight / 2);
+          ctx.scale(1, -1); // Flip Y-axis for Firefox MediaStream bug
+          ctx.rotate(Math.PI / 2); // 90° clockwise
+          ctx.translate(-originalWidth / 2, -originalHeight / 2);
+          addLog('🦊 Firefox MediaStream rotation with Y-flip applied');
+        } else {
+          // Normal rotation for other browsers
+          ctx.translate(rotatedWidth / 2, rotatedHeight / 2);
+          ctx.rotate(Math.PI / 2); // 90° clockwise
+          ctx.translate(-originalWidth / 2, -originalHeight / 2);
+        }
         
         // Draw rotated video frame
         ctx.drawImage(video, 0, 0, originalWidth, originalHeight);
