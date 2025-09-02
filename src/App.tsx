@@ -1,4 +1,4 @@
-// src/App.tsx - Auto-download flow without VideoPreview modal
+// src/App.tsx - Fullscreen implementation with floating buttons
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CameraProvider, 
@@ -6,12 +6,14 @@ import {
   useCameraContext, 
   useRecordingContext 
 } from './context';
+import { RemoteApiProvider, useRemoteApi } from './context/RemoteApiContext';
 import {
   LoadingScreen,
   ErrorScreen,
   CameraFeed,
   CameraControls,
   RecordingControls,
+  VideoPreview,
   SettingsPanel,
   RenderingModal
 } from './components';
@@ -30,6 +32,9 @@ const CameraApp: React.FC = () => {
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [tapCount, setTapCount] = useState<number>(0);
   const [exitButtonTimer, setExitButtonTimer] = useState<NodeJS.Timeout | null>(null);
+  
+  // Remote API state access
+  const { hadiahAvailable, currentScore } = useRemoteApi();
   
   // Push2Web login state - HIDDEN UI
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
@@ -65,6 +70,8 @@ const CameraApp: React.FC = () => {
     toggleRecording,
     formatTime,
     downloadVideo,
+    showPreview,
+    setShowPreview,
     processAndShareVideo,
     processingProgress,
     processingMessage,
@@ -78,6 +85,7 @@ const CameraApp: React.FC = () => {
     try {
       await document.documentElement.requestFullscreen();
       
+      // Lock orientation to portrait
       if ('orientation' in screen && 'lock' in screen.orientation) {
         try {
           await (screen.orientation as any).lock('portrait');
@@ -87,7 +95,9 @@ const CameraApp: React.FC = () => {
         }
       }
       
+      // Apply fullscreen lock class
       document.body.classList.add('fullscreen-locked');
+      
       setIsFullscreen(true);
       addLog('🖥️ Fullscreen mode activated');
       
@@ -102,8 +112,10 @@ const CameraApp: React.FC = () => {
         await document.exitFullscreen();
       }
       
+      // Remove fullscreen lock class
       document.body.classList.remove('fullscreen-locked');
       
+      // Unlock orientation
       if ('orientation' in screen && 'unlock' in screen.orientation) {
         try {
           (screen.orientation as any).unlock();
@@ -131,13 +143,14 @@ const CameraApp: React.FC = () => {
       setShowExitButton(true);
       addLog('📱 Long press detected - showing exit button');
       
+      // Auto-hide exit button after 5 seconds
       const hideTimer = setTimeout(() => {
         setShowExitButton(false);
         addLog('⏰ Exit button auto-hidden');
       }, 5000);
       
       setExitButtonTimer(hideTimer);
-    }, 1500);
+    }, 1500); // 1.5 second long press
     
     setLongPressTimer(timer);
   }, [isFullscreen, addLog]);
@@ -154,12 +167,15 @@ const CameraApp: React.FC = () => {
     
     setTapCount(prev => {
       if (prev === 0) {
-        setTimeout(() => setTapCount(0), 500);
+        // First tap
+        setTimeout(() => setTapCount(0), 500); // Reset after 500ms
         return 1;
       } else if (prev === 1) {
+        // Second tap - show exit button
         setShowExitButton(true);
         addLog('👆 Double tap detected - showing exit button');
         
+        // Auto-hide exit button after 5 seconds
         const hideTimer = setTimeout(() => {
           setShowExitButton(false);
           addLog('⏰ Exit button auto-hidden');
@@ -172,11 +188,12 @@ const CameraApp: React.FC = () => {
     });
   }, [isFullscreen, addLog]);
 
-  // Prevent gestures in fullscreen
+  // Prevent all gestures in fullscreen
   useEffect(() => {
     if (!isFullscreen) return;
 
     const preventGestures = (e: TouchEvent) => {
+      // Allow single touch for AR interaction
       if (e.touches.length > 1) {
         e.preventDefault();
       }
@@ -191,6 +208,7 @@ const CameraApp: React.FC = () => {
     };
 
     const preventKeyboard = (e: KeyboardEvent) => {
+      // Prevent F11, Escape, etc.
       if (e.key === 'F11' || e.key === 'Escape') {
         e.preventDefault();
       }
@@ -247,7 +265,7 @@ const CameraApp: React.FC = () => {
     };
   }, [longPressTimer, exitButtonTimer]);
 
-  // Handle Snapchat login
+  // Handle Snapchat login - functionality preserved but UI hidden
   const handleSnapchatLogin = useCallback(async (accessToken: string) => {
     try {
       addLog('🔗 Snapchat login successful, subscribing to Push2Web...');
@@ -411,6 +429,25 @@ const CameraApp: React.FC = () => {
     }
   }, [isReady, reloadLens, addLog]);
 
+  const handleClosePreview = useCallback(() => {
+    setShowPreview(false);
+    addLog('📱 Preview closed');
+    setTimeout(() => restoreCameraFeed(), 100);
+  }, [setShowPreview, addLog, restoreCameraFeed]);
+
+  const handleProcessAndShare = useCallback(() => {
+    addLog('🎬 Starting video processing...');
+    processAndShareVideo();
+  }, [processAndShareVideo, addLog]);
+
+  const handleDownload = useCallback(() => {
+    downloadVideo();
+    setTimeout(() => {
+      setShowPreview(false);
+      restoreCameraFeed();
+    }, 500);
+  }, [downloadVideo, setShowPreview, restoreCameraFeed]);
+
   // Initialize app when ready
   useEffect(() => {
     if (appReady) {
@@ -475,6 +512,33 @@ const CameraApp: React.FC = () => {
     );
   }
 
+  // Video preview
+  if (showPreview && recordedVideo) {
+    return (
+      <>
+        <VideoPreview
+          recordedVideo={recordedVideo}
+          onClose={handleClosePreview}
+          onDownload={handleDownload}
+          onProcessAndShare={handleProcessAndShare}
+        />
+        
+        <RenderingModal
+          isOpen={showRenderingModal}
+          progress={processingProgress}
+          message={processingMessage}
+          isComplete={processingProgress === 100 && !processingError}
+          hasError={!!processingError}
+          onCancel={() => {
+            setShowRenderingModal(false);
+            addLog('❌ Processing cancelled');
+            setTimeout(() => restoreCameraFeed(), 100);
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div 
       className="fixed inset-0 bg-black flex flex-col"
@@ -492,14 +556,13 @@ const CameraApp: React.FC = () => {
         isFlipped={isFlipped}
       />
 
-      {/* Camera Controls - Hidden in fullscreen, visible in normal mode */}
+      {/* Camera Controls - Already hidden via updated component */}
       <CameraControls
         onSettings={() => setShowSettings(true)}
         onFlip={() => setIsFlipped(!isFlipped)}
-        isFullscreen={isFullscreen}
       />
 
-      {/* Recording Controls - Only record button visible */}
+      {/* Recording Controls - Already hidden via updated component */}
       <RecordingControls
         recordingState={recordingState}
         recordingTime={recordingTime}
@@ -510,7 +573,15 @@ const CameraApp: React.FC = () => {
         disabled={!isReady}
       />
 
-      {/* Fullscreen Entry Button */}
+      {/* Remote API Status - For debugging only (can be removed or hidden in production) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="absolute top-20 right-4 bg-black/50 p-2 rounded text-xs text-white/70">
+          <div>Hadiah: {hadiahAvailable ? '✅' : '❌'}</div>
+          <div>Score: {currentScore}</div>
+        </div>
+      )}
+
+      {/* Fullscreen Entry Button - Show only when NOT in fullscreen */}
       {!isFullscreen && isReady && (
         <button
           onClick={enterFullscreen}
@@ -521,7 +592,7 @@ const CameraApp: React.FC = () => {
         </button>
       )}
 
-      {/* Exit Fullscreen Button */}
+      {/* Exit Fullscreen Button - Show only when in fullscreen and exit button is visible */}
       {isFullscreen && showExitButton && (
         <button
           onClick={() => {
@@ -568,7 +639,7 @@ const CameraApp: React.FC = () => {
       />
 
       <RenderingModal
-        isOpen={showRenderingModal}
+        isOpen={showRenderingModal && !showPreview}
         progress={processingProgress}
         message={processingMessage}
         isComplete={processingProgress === 100 && !processingError}
@@ -586,9 +657,11 @@ const CameraApp: React.FC = () => {
 const App: React.FC = () => {
   return (
     <CameraProvider>
-      <RecordingProvider addLog={() => {}}>
-        <AppWithContext />
-      </RecordingProvider>
+      <RemoteApiProvider>
+        <RecordingProvider addLog={() => {}}>
+          <AppWithContext />
+        </RecordingProvider>
+      </RemoteApiProvider>
     </CameraProvider>
   );
 };
