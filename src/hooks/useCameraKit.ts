@@ -44,9 +44,9 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
 };
 
 const createAdaptiveConfig = (): CameraKitConfig => ({
-  apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF+UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI',
-  lensId: import.meta.env.VITE_CAMERA_KIT_LENS_ID || '04441cd2-8e9d-420b-b293-90b5df8f577f',
-  lensGroupId: import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID || 'cd5b1b49-4483-45ea-9772-cb241939e2ce',
+  apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN,
+  lensId: import.meta.env.VITE_CAMERA_KIT_LENS_ID,
+  lensGroupId: import.meta.env.VITE_CAMERA_KIT_LENS_GROUP_ID,
   canvas: {
     width: Math.round(window.innerWidth * (window.devicePixelRatio || 1)),
     height: Math.round(window.innerHeight * (window.devicePixelRatio || 1))
