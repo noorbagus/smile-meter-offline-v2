@@ -53,10 +53,17 @@ const createAdaptiveConfig = (): CameraKitConfig => ({
   }
 });
 
-// Camera Kit preload
+// Camera Kit preload - singleton pattern to prevent double initialization
 const preloadCameraKit = async (): Promise<CameraKitInstance> => {
-  if (cameraKitInstance) return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
-  if (preloadPromise) return preloadPromise;
+  if (cameraKitInstance) {
+    console.log('♻️ Reusing existing Camera Kit instance');
+    return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
+  }
+  
+  if (preloadPromise) {
+    console.log('⏳ Camera Kit initialization in progress...');
+    return preloadPromise;
+  }
   
   preloadPromise = (async () => {
     try {
