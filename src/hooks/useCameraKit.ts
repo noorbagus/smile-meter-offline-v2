@@ -1,10 +1,17 @@
-// src/hooks/useCameraKit.ts - Complete implementation for Camera Kit 1.9
+// src/hooks/useCameraKit.ts - Fixed Remote API registration
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
+import { 
+  bootstrapCameraKit, 
+  createMediaStreamSource, 
+  Transform2D,
+  Injectable,
+  remoteApiServicesFactory
+} from '@snap/camera-kit';
 import { Push2Web } from '@snap/push2web';
 import { validateConfig } from '../config/cameraKit';
 import type { CameraState } from './useCameraPermissions';
-import { remoteApiService } from '../utils/RemoteApiService';
+// FIXED: Import the services correctly
+import { recordingControlService, hadiahStatusService } from '../utils/RemoteApiService';
 
 let cameraKitInstance: any = null;
 let preloadPromise: Promise<any> | null = null;
@@ -34,57 +41,47 @@ const preloadCameraKit = async () => {
       // Initialize Push2Web
       push2WebInstance = new Push2Web();
       
-      // Bootstrap Camera Kit with Push2Web extension
+      // FIXED: Correct Remote API service registration
       cameraKitInstance = await bootstrapCameraKit(
         { 
-          apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF-UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI'
+          apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF+UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQ3YjEtODM2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI'
         },
         (container) => {
           // Provide Push2Web extension
           container.provides(push2WebInstance!.extension);
+          
+          // FIXED: Correct way to provide Remote API services
+          container.provides(
+            Injectable(
+              remoteApiServicesFactory.token,
+              [remoteApiServicesFactory.token] as const,
+              (existing: any) => [
+                ...existing, 
+                recordingControlService, 
+                hadiahStatusService
+              ]
+            )
+          );
+          
           return container;
         }
       );
       
-      // Log Camera Kit info untuk debugging
-      console.log('[Camera Kit] SDK Version:', cameraKitInstance.version || 'Unknown');
-      console.log('[Camera Kit] Available methods:', Object.keys(cameraKitInstance));
-      console.log('[Camera Kit] API Registry:', cameraKitInstance.apiRegistry);
+      console.log('✅ Camera Kit initialized with Remote API services');
       
-      // Registrasi Remote API Service untuk Camera Kit 1.9
-      // Set the correct API Spec IDs
-      remoteApiService.apiSpecId = '554881fc-8ced-405b-bfea-f229c5dd9a4f'; // Recording Control API
+      // Make available for debugging
+      (window as any).cameraKitInstance = cameraKitInstance;
+      (window as any).recordingControlService = recordingControlService;
+      (window as any).hadiahStatusService = hadiahStatusService;
       
-      // Try various methods of registering the Remote API service
-      if (cameraKitInstance.apiRegistry && typeof cameraKitInstance.apiRegistry.registerRemoteApiService === 'function') {
-        cameraKitInstance.apiRegistry.registerRemoteApiService(remoteApiService);
-        console.log('✅ Remote API service registered via apiRegistry.registerRemoteApiService');
-      }
-      else if (typeof cameraKitInstance.registerRemoteApiService === 'function') {
-        cameraKitInstance.registerRemoteApiService(remoteApiService);
-        console.log('✅ Remote API service registered via registerRemoteApiService');
-      }
-      else if (cameraKitInstance.remoteApiManager && typeof cameraKitInstance.remoteApiManager.registerServices === 'function') {
-        cameraKitInstance.remoteApiManager.registerServices([remoteApiService]);
-        console.log('✅ Remote API service registered via remoteApiManager.registerServices');
-      }
-      else {
-        // Last resort: Try exposing as a property on the instance
-        cameraKitInstance.remoteApiService = remoteApiService;
-        
-        // Make available in window for debugging
-        (window as any).cameraKitInstance = cameraKitInstance;
-        (window as any).remoteApiService = remoteApiService;
-        
-        console.log('⚠️ WARNING: No known method to register Remote API service - exposed as property');
-        console.log('🔍 Debug: Try accessing window.cameraKitInstance and window.remoteApiService in console');
-      }
+      console.log('[Camera Kit] SDK Version:', cameraKitInstance?.version || 'Unknown');
       
       return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
     } catch (error) {
       cameraKitInstance = null;
       push2WebInstance = null;
       preloadPromise = null;
+      console.error('Camera Kit initialization failed:', error);
       throw error;
     }
   })();
@@ -431,7 +428,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         return true;
       }
 
-      addLog('🎭 Initializing Camera Kit with Push2Web...');
+      addLog('🎭 Initializing Camera Kit with Remote API & Push2Web...');
       addLog(`📐 Adaptive canvas: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
       setCameraState('initializing');
       containerRef.current = containerReference;
@@ -453,9 +450,6 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       sessionRef.current = session;
       streamRef.current = stream;
       isInitializedRef.current = true;
-      
-      // Make session available for debugging
-      (window as any).cameraSession = session;
       
       session.events.addEventListener("error", (event: any) => {
         addLog(`❌ Session error: ${event.detail}`);
@@ -507,7 +501,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }, 500);
 
       setCameraState('ready');
-      addLog('🎉 Camera Kit + Push2Web ready');
+      addLog('🎉 Camera Kit + Remote API + Push2Web ready');
       return true;
 
     } catch (error: any) {
@@ -543,12 +537,10 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // LANDSCAPE constraints for camera switch (match Brio hardware)
       const newStream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: newFacingMode,
-            // Request LANDSCAPE to match hardware sensor
             width: { ideal: 2560, min: 1280, max: 3840 },
             height: { ideal: 1440, min: 720, max: 2160 },
             frameRate: { ideal: 30, min: 15, max: 60 }
@@ -564,24 +556,16 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         5000
       );
 
-      addLog(`✅ New ${newFacingMode} LANDSCAPE stream obtained`);
+      addLog(`✅ New ${newFacingMode} stream obtained`);
       streamRef.current = newStream;
 
-      // Log new stream details with orientation check
       const videoTracks = newStream.getVideoTracks();
       const audioTracks = newStream.getAudioTracks();
       
       if (videoTracks.length > 0) {
         const settings = videoTracks[0].getSettings();
         const resolution = `${settings.width}x${settings.height}`;
-        const isLandscape = (settings.width || 0) > (settings.height || 0);
-        
         addLog(`📹 New stream: ${resolution}@${settings.frameRate}fps`);
-        addLog(`🔄 Orientation: ${isLandscape ? 'LANDSCAPE ✅' : 'PORTRAIT ⚠️'}`);
-        
-        if (!isLandscape) {
-          addLog(`⚠️ Expected landscape, got portrait - browser may have auto-rotated`);
-        }
       }
       
       addLog(`🎤 Audio tracks: ${audioTracks.length}`);
