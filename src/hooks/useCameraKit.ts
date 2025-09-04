@@ -70,6 +70,9 @@ const preloadCameraKit = async () => {
       );
       
       console.log('✅ Camera Kit initialized with Remote API services');
+      console.log('[Debug] Recording API Service registered:', recordingControlService.apiSpecId);
+      console.log('[Debug] Hadiah API Service registered:', hadiahStatusService.apiSpecId);
+      console.log('[Debug] Remote API registration completed successfully');
       
       // Make available for debugging
       (window as any).cameraKitInstance = cameraKitInstance;
