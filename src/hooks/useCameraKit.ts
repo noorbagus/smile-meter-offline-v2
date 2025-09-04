@@ -1,95 +1,63 @@
+// src/hooks/useCameraKit.ts - Fixed Remote API registration
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { CameraState } from '../types/camera';
+import { 
+  bootstrapCameraKit, 
+  createMediaStreamSource, 
+  Transform2D,
+  Injectable,
+  remoteApiServicesFactory,
+  type RemoteApiService
+} from '@snap/camera-kit';
+import { Push2Web } from '@snap/push2web';
+import { validateConfig } from '../config/cameraKit';
+import type { CameraState } from './useCameraPermissions';
+import { recordingControlService, hadiahStatusService } from '../utils/RemoteApiService';
 
-// TypeScript interfaces untuk CameraKit
-interface CameraKitSession {
-  setSource(source: any): Promise<void>;
-  applyLens(lens: any): Promise<void>;
-  play(mode: string): void;
-  pause(): void;
-  output: {
-    live?: HTMLCanvasElement;
-  };
-  events: {
-    addEventListener(event: string, callback: (event: any) => void): void;
-  };
-}
+let cameraKitInstance: any = null;
+let preloadPromise: Promise<any> | null = null;
+let push2WebInstance: Push2Web | null = null;
 
-interface CameraKit {
-  createSession(): Promise<CameraKitSession>;
-  lensRepository: {
-    loadLensGroups(groups: string[]): Promise<any>;
-  };
-}
-
-interface Push2WebInstance {
-  extension: any;
-}
-
-// Utility functions
-const withTimeout = <T>(promise: Promise<T>, timeout: number): Promise<T> => {
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error(`Timeout after ${timeout}ms`)), timeout)
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
     )
   ]);
 };
 
-const createMediaStreamSource = (stream: MediaStream, config: any) => {
-  const { createMediaStreamSource } = (window as any).CameraKit || {};
-  return createMediaStreamSource ? createMediaStreamSource(stream, config) : null;
-};
-
-const Transform2D = {
-  MirrorX: 'mirrorX'
-};
-
-// Global variables untuk singleton pattern
-let cameraKitInstance: CameraKit | null = null;
-let push2WebInstance: Push2WebInstance | null = null;
-let preloadPromise: Promise<{ cameraKit: CameraKit; push2Web: Push2WebInstance }> | null = null;
-
-// Preload function
-const preloadCameraKit = (): Promise<{ cameraKit: CameraKit; push2Web: Push2WebInstance }> => {
-  if (preloadPromise) {
-    return preloadPromise;
-  }
-
-  preloadPromise = (async (): Promise<{ cameraKit: CameraKit; push2Web: Push2WebInstance }> => {
+const preloadCameraKit = async () => {
+  if (cameraKitInstance) return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
+  if (preloadPromise) return preloadPromise;
+  
+  preloadPromise = (async () => {
     try {
-      if (cameraKitInstance && push2WebInstance) {
-        return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        throw new Error('HTTPS_REQUIRED');
       }
-
-      // Load scripts
-      const [cameraKitLib, push2WebLib] = await Promise.all([
-        import('@snap/camera-kit'),
-        import('@snap/push2web')
-      ]);
-
+      
+      validateConfig();
+      
       // Initialize Push2Web
-      push2WebInstance = new (push2WebLib as any).Push2Web();
+      push2WebInstance = new Push2Web();
       
-      // Initialize CameraKit
-      const { bootstrapCameraKit, createMediaStreamSource, Injectable, remoteApiServicesFactory } = cameraKitLib as any;
-      
-      // Create services
-      const recordingControlService = new (cameraKitLib as any).RecordingControlService();
-      const hadiahStatusService = new (cameraKitLib as any).HadiahStatusService();
+      // FIXED: Correct Remote API service registration
+      const configuration = { 
+        apiToken: import.meta.env.VITE_CAMERA_KIT_API_TOKEN || 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc3Rva2VuIiwibmJmIjoxNzQ3MDM1OTAyLCJzdWIiOiI2YzMzMWRmYy0zNzEzLTQwYjYtYTNmNi0zOTc2OTU3ZTkyZGF+UFJPRFVDVElPTn5jZjM3ZDAwNy1iY2IyLTQsrc/q9Lcy5hYjYzLTg2My1jYWIzYzliOGJhM2YifQ.UqGhWZNuWXplirojsPSgZcsO3yu98WkTM1MRG66dsHI'
+      };
 
       cameraKitInstance = await bootstrapCameraKit(
-        {
-          apiToken: 'eyJhbGciOiJIUzI1NiIsImtpZCI6IkNhbnZhc1MyU0hNQUNQcm9kIiwidHlwIjoiSldUIn0.eyJhdWQiOiJjYW52YXMtY2FudmFzYXBpIiwiaXNzIjoiY2FudmFzLXMyc2htrapped"'
-        },
-        (container: any) => {
+        configuration,
+        (container) => {
+          // Provide Push2Web extension
           container.provides(push2WebInstance!.extension);
           
+          // FIXED: Correct Remote API service registration
           container.provides(
             Injectable(
               remoteApiServicesFactory.token,
               [remoteApiServicesFactory.token] as const,
-              (existing: any) => [
+              (existing: RemoteApiService[]) => [
                 ...existing, 
                 recordingControlService, 
                 hadiahStatusService
@@ -103,15 +71,12 @@ const preloadCameraKit = (): Promise<{ cameraKit: CameraKit; push2Web: Push2WebI
       
       console.log('✅ Camera Kit initialized with Remote API services');
       
-      // Debug globals
+      // Make available for debugging
       (window as any).cameraKitInstance = cameraKitInstance;
       (window as any).recordingControlService = recordingControlService;
       (window as any).hadiahStatusService = hadiahStatusService;
       
-      // Throw error if either instance is null
-      if (!cameraKitInstance || !push2WebInstance) {
-        throw new Error('Failed to initialize CameraKit or Push2Web instances');
-      }
+      console.log('[Camera Kit] SDK Version:', cameraKitInstance?.version || 'Unknown');
       
       return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
     } catch (error) {
@@ -126,136 +91,197 @@ const preloadCameraKit = (): Promise<{ cameraKit: CameraKit; push2Web: Push2WebI
   return preloadPromise;
 };
 
-// Initialize preload
+// Preload Camera Kit on module import
 preloadCameraKit().catch(console.error);
 
 export const useCameraKit = (addLog: (message: string) => void) => {
   const [cameraState, setCameraState] = useState<CameraState>('initializing');
   const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
   
-  // Refs dengan proper typing
-  const sessionRef = useRef<CameraKitSession | null>(null);
+  const sessionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<React.RefObject<HTMLDivElement> | null>(null);
-  const lensRepositoryRef = useRef<any>(null);
   const isInitializedRef = useRef(false);
   const isAttachedRef = useRef(false);
+  const lensRepositoryRef = useRef<any>(null);
   const currentConfigRef = useRef<any>(null);
 
-  // Process stream function
-  const processStream = useCallback(async (stream: MediaStream, facingMode: string): Promise<MediaStream> => {
+  const setupPush2WebEvents = useCallback((push2Web: Push2Web) => {
+    if (!push2Web) return;
+    
     try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const video = document.createElement('video');
-      
-      if (!ctx) throw new Error('Cannot get canvas context');
-      
-      // Set canvas size berdasarkan device
-      const devicePixelRatio = window.devicePixelRatio || 1;
-      canvas.width = Math.round(window.innerWidth * devicePixelRatio);
-      canvas.height = Math.round(window.innerHeight * devicePixelRatio);
-      
-      video.srcObject = stream;
-      video.muted = true;
-      await video.play();
-      
-      // Create processed stream
-      const processedStream = canvas.captureStream(30);
-      
-      // Add audio tracks dari original stream
-      stream.getAudioTracks().forEach(track => {
-        processedStream.addTrack(track.clone());
+      push2Web.events.addEventListener('error', (event: any) => {
+        addLog(`❌ Push2Web error: ${event.detail}`);
       });
       
-      addLog(`✅ Stream processed: ${canvas.width}x${canvas.height}`);
-      return processedStream;
+      push2Web.events.addEventListener('lensReceived', (event: any) => {
+        addLog(`📦 Push2Web lens received: ${event.detail}`);
+      });
       
+      push2Web.events.addEventListener('subscriptionChanged', (event: any) => {
+        addLog(`🔄 Push2Web subscription changed: ${event.detail}`);
+      });
+      
+      addLog('✅ Push2Web event listeners registered');
     } catch (error) {
-      addLog(`❌ Stream processing failed: ${error}`);
-      return stream; // Fallback ke original stream
+      addLog(`⚠️ Push2Web events setup failed: ${error}`);
     }
   }, [addLog]);
 
-  // Setup Push2Web events
-  const setupPush2WebEvents = useCallback((push2Web: Push2WebInstance) => {
-    try {
-      addLog('🔗 Setting up Push2Web events...');
-      // Add event listeners untuk Push2Web jika diperlukan
-      addLog('✅ Push2Web events configured');
-    } catch (error) {
-      addLog(`❌ Push2Web setup error: ${error}`);
+  const attachCameraOutput = useCallback((output: any, containerReference: React.RefObject<HTMLDivElement>) => {
+    if (!output || !containerReference.current || isAttachedRef.current) {
+      return;
     }
-  }, [addLog]);
 
-  // Attach camera output
-  const attachCameraOutput = useCallback((
-    canvas: HTMLCanvasElement,
-    containerReference: React.RefObject<HTMLDivElement>
-  ) => {
     try {
-      if (!containerReference.current || !canvas) {
-        addLog('❌ Cannot attach - missing container or canvas');
-        return;
-      }
-
-      if (isAttachedRef.current && containerReference.current.contains(canvas)) {
-        addLog('📱 Canvas already attached');
-        return;
-      }
-
-      // Clear existing canvas
       const existingCanvas = containerReference.current.querySelector('canvas');
-      if (existingCanvas && existingCanvas !== canvas) {
+      if (existingCanvas) {
+        addLog('🎨 Removing existing canvas');
         existingCanvas.remove();
-        addLog('🗑️ Removed old canvas');
       }
 
-      // Style canvas
-      canvas.style.width = '100%';
-      canvas.style.height = '100%';
-      canvas.style.objectFit = 'cover';
-      canvas.style.position = 'absolute';
-      canvas.style.top = '0';
-      canvas.style.left = '0';
+      if (output.live && output.live instanceof HTMLCanvasElement) {
+        output.live.style.width = '100%';
+        output.live.style.height = '100%';
+        output.live.style.objectFit = 'cover';
+        output.live.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
+        
+        containerReference.current.appendChild(output.live);
+        outputCanvasRef.current = output.live;
+        isAttachedRef.current = true;
+        
+        addLog('🎥 Camera output attached');
+      } else {
+        addLog('❌ Invalid output format');
+      }
+    } catch (error) {
+      addLog(`❌ Output attachment failed: ${error}`);
+    }
+  }, [currentFacingMode, addLog]);
 
-      // Attach canvas
-      containerReference.current.appendChild(canvas);
-      outputCanvasRef.current = canvas;
-      isAttachedRef.current = true;
-      
-      addLog('✅ Camera output attached successfully');
-      
-    } catch (e) {
-      addLog(`❌ Attachment failed: ${e}`);
+  const cleanup = useCallback(() => {
+    addLog('🧹 Starting cleanup...');
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        addLog(`🛑 Stopped ${track.kind} track`);
+      });
+      streamRef.current = null;
+    }
+
+    if (sessionRef.current) {
+      try {
+        sessionRef.current.destroy();
+        addLog('🗑️ Session destroyed');
+      } catch (error) {
+        addLog(`⚠️ Session cleanup error: ${error}`);
+      }
+      sessionRef.current = null;
+    }
+
+    outputCanvasRef.current = null;
+    isInitializedRef.current = false;
+    isAttachedRef.current = false;
+    setCameraState('initializing');
+    
+    addLog('✅ Cleanup complete');
+  }, [addLog]);
+
+  const pauseSession = useCallback(() => {
+    if (sessionRef.current) {
+      try {
+        sessionRef.current.pause();
+        addLog('⏸️ Session paused');
+      } catch (error) {
+        addLog(`❌ Pause failed: ${error}`);
+      }
     }
   }, [addLog]);
 
-  // Restore camera feed
-  const restoreCameraFeed = useCallback(() => {
-    if (sessionRef.current && outputCanvasRef.current && containerRef.current?.current) {
+  const resumeSession = useCallback(() => {
+    if (sessionRef.current) {
+      try {
+        sessionRef.current.play('live');
+        addLog('▶️ Session resumed');
+      } catch (error) {
+        addLog(`❌ Resume failed: ${error}`);
+      }
+    }
+  }, [addLog]);
+
+  const restoreCameraFeed = useCallback(async () => {
+    if (!sessionRef.current?.output?.live || !containerRef.current?.current) {
+      addLog('❌ Cannot restore - missing session or container');
+      return false;
+    }
+
+    try {
       addLog('🔄 Restoring camera feed...');
       
-      const isCanvasAttached = containerRef.current.current.contains(outputCanvasRef.current);
-      
-      if (!isCanvasAttached) {
-        addLog('📱 Re-attaching canvas');
-        attachCameraOutput(outputCanvasRef.current, containerRef.current);
+      if (!isAttachedRef.current) {
+        attachCameraOutput(sessionRef.current.output.live, containerRef.current);
+        addLog('✅ Camera feed restored');
+        return true;
       }
       
-      if (sessionRef.current.output?.live) {
-        try {
-          sessionRef.current.play('live');
-          addLog('▶️ Session resumed');
-        } catch (error) {
-          addLog(`⚠️ Resume error: ${error}`);
-        }
-      }
+      addLog('✅ Camera feed already active');
+      return true;
+    } catch (recoveryError) {
+      addLog(`❌ Recovery failed: ${recoveryError}`);
+      return false;
     }
   }, [addLog, attachCameraOutput]);
 
-  // Initialize CameraKit
+  const reloadLens = useCallback(async (): Promise<boolean> => {
+    if (!sessionRef.current || !isInitializedRef.current) {
+      addLog('❌ Cannot reload lens - session not initialized');
+      return false;
+    }
+
+    try {
+      addLog('🔄 Reloading lens...');
+      const config = currentConfigRef.current;
+      
+      if (!config || !lensRepositoryRef.current) {
+        addLog('❌ Missing configuration or lens repository');
+        return false;
+      }
+
+      const lenses = lensRepositoryRef.current;
+      if (lenses && lenses.length > 0) {
+        const targetLens = lenses.find((lens: any) => lens.id === config.lensId) || lenses[0];
+        await withTimeout(sessionRef.current.applyLens(targetLens), 3000);
+        addLog(`✅ Lens reloaded: ${targetLens.name}`);
+        return true;
+      }
+      
+      addLog('❌ No lenses available');
+      return false;
+    } catch (error) {
+      addLog(`❌ Lens reload failed: ${error}`);
+      return false;
+    }
+  }, [addLog]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        addLog('👁️ App visible - checking camera...');
+        setTimeout(() => {
+          restoreCameraFeed();
+        }, 100);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [addLog, restoreCameraFeed]);
+
   const initializeCameraKit = useCallback(async (
     stream: MediaStream,
     containerReference: React.RefObject<HTMLDivElement>
@@ -272,49 +298,37 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       };
       currentConfigRef.current = adaptiveConfig;
       
-      // Update existing session
       if (isInitializedRef.current && sessionRef.current && cameraState === 'ready') {
         addLog('📱 Updating existing session...');
         
-        const processedStream = await processStream(stream, currentFacingMode);
-        
-        const source = createMediaStreamSource(processedStream, {
+        const source = createMediaStreamSource(stream, {
           transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
           cameraType: currentFacingMode
         });
         
         await withTimeout(sessionRef.current.setSource(source), 3000);
         await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
+        addLog(`✅ Adaptive render: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
         
         streamRef.current = stream;
         containerRef.current = containerReference;
         
         if (sessionRef.current.output?.live && containerReference.current && !isAttachedRef.current) {
           setTimeout(() => {
-            if (sessionRef.current?.output.live) {
+            if (sessionRef.current.output.live) {
               attachCameraOutput(sessionRef.current.output.live, containerReference);
             }
           }, 100);
         }
         
-        addLog('✅ Stream updated with rotation support');
+        addLog('✅ Stream updated');
         return true;
       }
 
-      // Initialize new session
-      addLog('🎭 Initializing Camera Kit with Push2Web + Rotation...');
+      addLog('🎭 Initializing Camera Kit with Remote API & Push2Web...');
+      addLog(`📐 Adaptive canvas: ${adaptiveConfig.canvas.width}x${adaptiveConfig.canvas.height}`);
       setCameraState('initializing');
       containerRef.current = containerReference;
-      
-      // Clean up existing session
-      if (sessionRef.current) {
-        try {
-          sessionRef.current.pause();
-          sessionRef.current = null;
-        } catch (e) {
-          addLog(`⚠️ Session cleanup: ${e}`);
-        }
-      }
 
       const { cameraKit, push2Web } = await withTimeout(preloadCameraKit(), 10000);
       
@@ -329,7 +343,7 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       }
 
       addLog('🎬 Creating session...');
-      const session = await withTimeout(cameraKit.createSession(), 5000) as CameraKitSession;
+      const session: any = await withTimeout(cameraKit.createSession(), 5000);
       sessionRef.current = session;
       streamRef.current = stream;
       isInitializedRef.current = true;
@@ -339,15 +353,12 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         setCameraState('error');
       });
 
-      // Process stream with rotation
-      const processedStream = await processStream(stream, currentFacingMode);
-
-      const source = createMediaStreamSource(processedStream, {
+      const source = createMediaStreamSource(stream, {
         transform: currentFacingMode === 'user' ? Transform2D.MirrorX : undefined,
         cameraType: currentFacingMode
       });
       
-      await withTimeout(sessionRef.current.setSource(source), 3000);
+      await withTimeout(session.setSource(source), 3000);
       addLog('✅ Camera source configured');
 
       await source.setRenderSize(adaptiveConfig.canvas.width, adaptiveConfig.canvas.height);
@@ -370,19 +381,19 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       if (lenses && lenses.length > 0) {
         try {
           const targetLens = lenses.find((lens: any) => lens.id === adaptiveConfig.lensId) || lenses[0];
-          await withTimeout(sessionRef.current.applyLens(targetLens), 3000);
+          await withTimeout(session.applyLens(targetLens), 3000);
           addLog(`✅ Lens applied: ${targetLens.name}`);
         } catch (lensApplyError) {
           addLog(`⚠️ Lens application failed: ${lensApplyError}`);
         }
       }
 
-      sessionRef.current.play('live');
+      session.play('live');
 
       setTimeout(() => {
-        if (sessionRef.current?.output.live && containerReference.current && !isAttachedRef.current) {
+        if (session.output.live && containerReference.current && !isAttachedRef.current) {
           addLog('🎥 Attaching adaptive output...');
-          attachCameraOutput(sessionRef.current.output.live, containerReference);
+          attachCameraOutput(session.output.live, containerReference);
         }
       }, 500);
 
@@ -396,9 +407,8 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       setCameraState('error');
       return false;
     }
-  }, [currentFacingMode, addLog, attachCameraOutput, cameraState, setupPush2WebEvents, processStream]);
+  }, [currentFacingMode, addLog, attachCameraOutput, cameraState, setupPush2WebEvents]);
 
-  // Switch camera
   const switchCamera = useCallback(async (): Promise<MediaStream | null> => {
     if (!sessionRef.current || !isInitializedRef.current) {
       addLog('❌ Cannot switch - session not initialized');
@@ -407,55 +417,24 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
     try {
       const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      addLog(`🔄 Switching to ${newFacingMode} camera...`);
+      addLog(`🔄 Switching camera: ${currentFacingMode} → ${newFacingMode}`);
 
-      if (sessionRef.current.output?.live) {
-        sessionRef.current.pause();
-        addLog('⏸️ Session paused');
-      }
+      const constraints = {
+        video: {
+          facingMode: newFacingMode,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
+        },
+        audio: true
+      };
 
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => {
-          track.stop();
-          addLog(`🛑 Stopped ${track.kind} track`);
-        });
-        streamRef.current = null;
+        streamRef.current.getTracks().forEach(track => track.stop());
       }
 
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      const newStream = await withTimeout(
-        navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: newFacingMode,
-            width: { ideal: 2560, min: 1280, max: 3840 },
-            height: { ideal: 1440, min: 720, max: 2160 },
-            frameRate: { ideal: 30, min: 15, max: 60 }
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: { ideal: 48000 },
-            channelCount: { ideal: 2 }
-          }
-        }),
-        5000
-      );
-
-      addLog(`✅ New ${newFacingMode} stream obtained`);
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = newStream;
-
-      const videoTracks = newStream.getVideoTracks();
-      const audioTracks = newStream.getAudioTracks();
-      
-      if (videoTracks.length > 0) {
-        const settings = videoTracks[0].getSettings();
-        const resolution = `${settings.width}x${settings.height}`;
-        addLog(`📹 New stream: ${resolution}@${settings.frameRate}fps`);
-      }
-      
-      addLog(`🎤 Audio tracks: ${audioTracks.length}`);
 
       const source = createMediaStreamSource(newStream, {
         transform: newFacingMode === 'user' ? Transform2D.MirrorX : undefined,
@@ -463,60 +442,27 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       });
 
       await withTimeout(sessionRef.current.setSource(source), 3000);
-      await source.setRenderSize(
-        currentConfigRef.current.canvas.width,
-        currentConfigRef.current.canvas.height
-      );
-
-      setCurrentFacingMode(newFacingMode);
-
-      if (sessionRef.current.output?.live && containerRef.current?.current) {
-        setTimeout(() => {
-          if (sessionRef.current?.output.live && containerRef.current) {
-            attachCameraOutput(sessionRef.current.output.live, containerRef.current);
-          }
-        }, 100);
+      
+      const config = currentConfigRef.current;
+      if (config) {
+        await source.setRenderSize(config.canvas.width, config.canvas.height);
       }
 
-      sessionRef.current.play('live');
+      if (outputCanvasRef.current) {
+        outputCanvasRef.current.style.transform = newFacingMode === 'user' ? 'scaleX(-1)' : 'none';
+      }
+
+      setCurrentFacingMode(newFacingMode);
       addLog(`✅ Camera switched to ${newFacingMode}`);
       
       return newStream;
-
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       addLog(`❌ Camera switch failed: ${errorMessage}`);
-      
-      try {
-        await restoreCameraFeed();
-        addLog('🔄 Camera feed restored after failed switch');
-      } catch (recoveryError) {
-        addLog(`❌ Recovery failed: ${recoveryError}`);
-      }
-      
       return null;
     }
-  }, [currentFacingMode, addLog, attachCameraOutput, restoreCameraFeed]);
+  }, [currentFacingMode, addLog]);
 
-  // Handle visibility change
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        addLog('👁️ App visible - checking camera...');
-        setTimeout(() => {
-          restoreCameraFeed();
-        }, 100);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [addLog, restoreCameraFeed]);
-
-  // Get functions
   const getCanvas = useCallback((): HTMLCanvasElement | null => {
     return outputCanvasRef.current;
   }, []);
@@ -525,21 +471,34 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     return streamRef.current;
   }, []);
 
-  const getSession = useCallback((): CameraKitSession | null => {
-    return sessionRef.current;
-  }, []);
-
   const isReady = cameraState === 'ready' && isInitializedRef.current;
+  const isInitializing = cameraState === 'initializing';
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
 
   return {
+    // Core state
     cameraState,
     currentFacingMode,
     isReady,
+    isInitializing,
+    
+    // Camera Kit functions
     initializeCameraKit,
     switchCamera,
+    reloadLens,
+    pauseSession,
+    resumeSession,
+    cleanup,
     restoreCameraFeed,
+    
+    // Output access
     getCanvas,
-    getStream,
-    getSession
+    getStream
   };
 };
