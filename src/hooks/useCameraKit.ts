@@ -1,4 +1,4 @@
-// src/hooks/useCameraKit.ts - Push2Web integration
+// src/hooks/useCameraKit.ts - Complete implementation for Camera Kit 1.9
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { bootstrapCameraKit, createMediaStreamSource, Transform2D } from '@snap/camera-kit';
 import { Push2Web } from '@snap/push2web';
@@ -46,35 +46,38 @@ const preloadCameraKit = async () => {
         }
       );
       
-      // Register Remote API service
-      try {
-        // Different ways to register the service - try each one until one works
+      // Log Camera Kit info untuk debugging
+      console.log('[Camera Kit] SDK Version:', cameraKitInstance.version || 'Unknown');
+      console.log('[Camera Kit] Available methods:', Object.keys(cameraKitInstance));
+      console.log('[Camera Kit] API Registry:', cameraKitInstance.apiRegistry);
+      
+      // Registrasi Remote API Service untuk Camera Kit 1.9
+      // Set the correct API Spec IDs
+      remoteApiService.apiSpecId = '554881fc-8ced-405b-bfea-f229c5dd9a4f'; // Recording Control API
+      
+      // Try various methods of registering the Remote API service
+      if (cameraKitInstance.apiRegistry && typeof cameraKitInstance.apiRegistry.registerRemoteApiService === 'function') {
+        cameraKitInstance.apiRegistry.registerRemoteApiService(remoteApiService);
+        console.log('✅ Remote API service registered via apiRegistry.registerRemoteApiService');
+      }
+      else if (typeof cameraKitInstance.registerRemoteApiService === 'function') {
+        cameraKitInstance.registerRemoteApiService(remoteApiService);
+        console.log('✅ Remote API service registered via registerRemoteApiService');
+      }
+      else if (cameraKitInstance.remoteApiManager && typeof cameraKitInstance.remoteApiManager.registerServices === 'function') {
+        cameraKitInstance.remoteApiManager.registerServices([remoteApiService]);
+        console.log('✅ Remote API service registered via remoteApiManager.registerServices');
+      }
+      else {
+        // Last resort: Try exposing as a property on the instance
+        cameraKitInstance.remoteApiService = remoteApiService;
         
-        // Method 1: Direct assignment to remoteApiServices array
-        if (typeof cameraKitInstance.remoteApiServices !== 'undefined') {
-          cameraKitInstance.remoteApiServices = [remoteApiService];
-          console.log('Remote API service registered via remoteApiServices array');
-        }
-        // Method 2: Using addRemoteApiService method
-        else if (typeof cameraKitInstance.addRemoteApiService === 'function') {
-          cameraKitInstance.addRemoteApiService(remoteApiService);
-          console.log('Remote API service registered via addRemoteApiService');
-        }
-        // Method 3: Using registerRemoteApiService method
-        else if (typeof cameraKitInstance.registerRemoteApiService === 'function') {
-          cameraKitInstance.registerRemoteApiService(remoteApiService);
-          console.log('Remote API service registered via registerRemoteApiService');
-        }
-        // Method 4: Using provide if available
-        else if (typeof cameraKitInstance.provide === 'function') {
-          cameraKitInstance.provide(remoteApiService);
-          console.log('Remote API service registered via provide method');
-        }
-        else {
-          console.warn('No known method to register Remote API service - lens may not receive responses');
-        }
-      } catch (error) {
-        console.error('Failed to register Remote API service:', error);
+        // Make available in window for debugging
+        (window as any).cameraKitInstance = cameraKitInstance;
+        (window as any).remoteApiService = remoteApiService;
+        
+        console.log('⚠️ WARNING: No known method to register Remote API service - exposed as property');
+        console.log('🔍 Debug: Try accessing window.cameraKitInstance and window.remoteApiService in console');
       }
       
       return { cameraKit: cameraKitInstance, push2Web: push2WebInstance };
@@ -450,6 +453,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       sessionRef.current = session;
       streamRef.current = stream;
       isInitializedRef.current = true;
+      
+      // Make session available for debugging
+      (window as any).cameraSession = session;
       
       session.events.addEventListener("error", (event: any) => {
         addLog(`❌ Session error: ${event.detail}`);
