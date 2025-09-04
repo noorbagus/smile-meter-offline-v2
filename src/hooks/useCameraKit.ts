@@ -141,19 +141,34 @@ export const useCameraKit = (addLog: (message: string) => void) => {
         existingCanvas.remove();
       }
 
-      if (output.live && output.live instanceof HTMLCanvasElement) {
-        output.live.style.width = '100%';
-        output.live.style.height = '100%';
-        output.live.style.objectFit = 'cover';
-        output.live.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
+      // Handle both direct canvas and wrapped output
+      let canvas: HTMLCanvasElement | null = null;
+      
+      if (output instanceof HTMLCanvasElement) {
+        canvas = output;
+        addLog('🎥 Direct canvas output detected');
+      } else if (output.live && output.live instanceof HTMLCanvasElement) {
+        canvas = output.live;
+        addLog('🎥 Wrapped canvas output detected');
+      } else if (output.element && output.element instanceof HTMLCanvasElement) {
+        canvas = output.element;
+        addLog('🎥 Element canvas output detected');
+      } else {
+        addLog(`❌ Invalid output format: ${typeof output}, live: ${typeof output.live}, element: ${typeof output.element}`);
+        return;
+      }
+
+      if (canvas) {
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.objectFit = 'cover';
+        canvas.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
         
-        containerReference.current.appendChild(output.live);
-        outputCanvasRef.current = output.live;
+        containerReference.current.appendChild(canvas);
+        outputCanvasRef.current = canvas;
         isAttachedRef.current = true;
         
         addLog('🎥 Camera output attached');
-      } else {
-        addLog('❌ Invalid output format');
       }
     } catch (error) {
       addLog(`❌ Output attachment failed: ${error}`);
@@ -391,9 +406,19 @@ export const useCameraKit = (addLog: (message: string) => void) => {
       session.play('live');
 
       setTimeout(() => {
-        if (session.output.live && containerReference.current && !isAttachedRef.current) {
+        if (session.output && containerReference.current && !isAttachedRef.current) {
           addLog('🎥 Attaching adaptive output...');
-          attachCameraOutput(session.output.live, containerReference);
+          // Debug the actual output structure
+          addLog(`🔍 Output type: ${typeof session.output}`);
+          addLog(`🔍 Output keys: ${Object.keys(session.output).join(', ')}`);
+          
+          // Try different output paths
+          if (session.output.live) {
+            addLog(`🔍 Live type: ${typeof session.output.live}`);
+            addLog(`🔍 Live constructor: ${session.output.live.constructor.name}`);
+          }
+          
+          attachCameraOutput(session.output, containerReference);
         }
       }, 500);
 
