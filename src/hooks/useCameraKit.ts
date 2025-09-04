@@ -157,29 +157,50 @@ export const useCameraKit = (addLog: (message: string) => void) => {
     return canvas;
   }, [currentFacingMode]);
 
-  // Push2Web event subscription
-  const setupPush2WebEvents = useCallback(() => {
-    if (!push2WebInstance || push2WebSubscribed.current) return;
-  
-    try {
-      push2WebInstance.events.addEventListener('error', (error: any) => {
-        addLog(`❌ Push2Web error: ${error}`);
-      });
-  
-      push2WebInstance.events.addEventListener('lensReceived', (event: any) => {
-        addLog('📦 Lens received via Push2Web');
-      });
-  
-      push2WebInstance.events.addEventListener('subscriptionChanged', (event: any) => {
-        addLog('🔄 Push2Web subscription changed');
-      });
-  
-      push2WebSubscribed.current = true;
-      addLog('📡 Push2Web events subscribed');
-    } catch (error) {
-      addLog(`⚠️ Push2Web setup failed: ${error}`);
+// Push2Web event handlers
+// Push2Web event handlers
+const setupPush2WebEvents = useCallback((push2Web: Push2Web) => {
+  // Lens received event
+  push2Web.events.addEventListener('lensReceived', (event: any) => {
+    const { id, name, cameraFacingPreference } = event.detail;
+    addLog(`📦 Push2Web lens received: ${name} (${id})`);
+    addLog(`   Camera preference: ${cameraFacingPreference}`);
+    
+    // Apply lens to current session
+    if (sessionRef.current && lensRepositoryRef.current) {
+      try {
+        // ✅ Hanya cari lens dari repository yang sudah di-load
+        const targetLens = lensRepositoryRef.current.find((lens: any) => lens.id === id);
+        
+        if (targetLens) {
+          sessionRef.current.applyLens(targetLens).then(() => {
+            addLog(`✅ Push2Web lens applied: ${name}`);
+          }).catch((error: any) => {
+            addLog(`❌ Failed to apply Push2Web lens: ${error}`);
+          });
+        } else {
+          addLog(`❌ Lens not found in repository: ${id}`);
+          addLog(`   Available lenses: ${lensRepositoryRef.current.map((l: any) => l.id).join(', ')}`);
+        }
+      } catch (error) {
+        addLog(`❌ Push2Web lens application error: ${error}`);
+      }
+    } else {
+      addLog(`⚠️ Session or repository not ready for Push2Web lens`);
     }
-  }, [addLog]);
+  });
+
+  // Error event
+  push2Web.events.addEventListener('error', (event: any) => {
+    const errorDetails = event.detail;
+    addLog(`❌ Push2Web error: ${errorDetails.message || 'Unknown error'}`);
+  });
+
+  // Subscription changed event
+  push2Web.events.addEventListener('subscriptionChanged', (event: any) => {
+    addLog(`📡 Push2Web subscription: ${event.detail.status}`);
+  });
+}, [addLog]);
 
   // Stream restoration for app visibility changes
   const restoreCameraFeed = useCallback(async (): Promise<boolean> => {
@@ -289,7 +310,9 @@ export const useCameraKit = (addLog: (message: string) => void) => {
 
       setCameraState('ready');
       isInitializedRef.current = true;
-      setupPush2WebEvents();
+      if (push2WebInstance) {
+        setupPush2WebEvents(push2WebInstance);
+      }
       
       addLog('🎉 Camera Kit ready!');
       return true;
